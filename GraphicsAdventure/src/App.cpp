@@ -5,6 +5,7 @@
 #include <DirectXMath.h>
 
 #include "Utils/BasicMesh.h"
+#include "Utils/ShaderCBuf.h"
 
 using namespace GDX11;
 using namespace Microsoft::WRL;
@@ -95,12 +96,24 @@ namespace GA
 		m_context->GetDeviceContext()->RSSetViewports(1, &vp);
 
 		m_imguiManager.Set(m_window.get(), m_context.get());
+
+		CameraDesc camDesc = {};
+		camDesc.fov = 60.0f;
+		camDesc.aspect = (float)m_window->GetDesc().width / m_window->GetDesc().height;
+		camDesc.nearZ = 0.1f;
+		camDesc.farZ = 1000.0f;
+		camDesc.position = { 0.0f, 0.0f, 0.0f };
+		camDesc.rotation = { 0.0f, 0.0f, 0.0f };
+		m_camera.Set(camDesc);
+		m_camController.Set(&m_camera, XMFLOAT3(0.0f, 0.0f, 0.0f), 8.0f, 0.8f, 5.0f, 15.0f);
 	}
 
 	void App::Run()
 	{
 		while (!m_window->GetState().shouldClose)
 		{
+			m_time.UpdateDeltaTime();
+
 			OnUpdate();
 			OnRender();
 			OnImGuiRender();
@@ -123,12 +136,12 @@ namespace GA
 		EventDispatcher dispatcher(event);
 		dispatcher.Dispatch<WindowResizeEvent>(GDX11_BIND_EVENT_FN(OnWindowResizedEvent));
 
-
+		m_camController.OnEvent(event, m_time.GetDeltaTime());
 	}
 
 	void App::OnUpdate()
 	{
-
+		m_camController.ProcessInput(m_window.get(), m_time.GetDeltaTime());
 	}
 
 	void App::OnRender()
@@ -141,12 +154,68 @@ namespace GA
 		m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
 		m_resLib.Get<RasterizerState>("default")->Bind();
 
-		auto vs = m_resLib.Get<VertexShader>("basic");
-		auto ps = m_resLib.Get<PixelShader>("basic");
+		SetLight();
+		DrawCube();
+	}
 
+	void App::OnImGuiRender()
+	{
+		m_imguiManager.Begin();
+
+
+
+		m_imguiManager.End();
+	}
+
+	void App::SetLight()
+	{
+		auto ps = m_resLib.Get<PixelShader>("light");
+		XMVECTOR rotQuatXM = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(50.0f), XMConvertToRadians(-30.0f), 0.0f);
+		XMVECTOR directionXM = XMVector3Rotate(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), rotQuatXM);
+		XMFLOAT3 direction;
+		XMStoreFloat3(&direction, directionXM);
+
+		GA::Utils::LightPSSystemCBuf cbuf;
+		cbuf.dirLights[0].color = { 1.0f, 1.0f, 1.0f };
+		cbuf.dirLights[0].direction = direction;
+		cbuf.dirLights[0].ambientIntensity = 0.2f;
+		cbuf.dirLights[0].intensity = 1.0f;
+
+		cbuf.pointLights[0].color = { 1.0f, 0.0f, 0.0f };
+		cbuf.pointLights[0].position = { 0.0f, 4.0f, 0.0f };
+		cbuf.pointLights[0].ambientIntensity = 0.2f;
+		cbuf.pointLights[0].intensity = 1.0f;
+		cbuf.pointLights[0].attConstant = 1.0f;
+		cbuf.pointLights[0].attLinear = 0.045f;
+		cbuf.pointLights[0].attQuadratic = 0.0075f;
+
+		cbuf.spotLights[0].color = { 0.0f, 0.0f, 1.0f };
+		cbuf.spotLights[0].direction = { 0.0f, -1.0f, 0.0f };
+		cbuf.spotLights[0].position = { 0.0f, 4.0f, 0.0f };
+		cbuf.spotLights[0].ambientIntensity = 0.2f;
+		cbuf.spotLights[0].intensity = 1.0f;
+		cbuf.spotLights[0].attConstant = 1.0f;
+		cbuf.spotLights[0].attLinear = 0.045f;
+		cbuf.spotLights[0].attQuadratic = 0.0075f;
+		cbuf.spotLights[0].innerCutOffCosAngle = cosf(XMConvertToRadians(15.0f));
+		cbuf.spotLights[0].outerCutOffCosAngle = cosf(XMConvertToRadians(20.0f));
+
+
+		cbuf.activeDirLights = 1;
+		cbuf.activePointLights = 1;
+		cbuf.activeSpotLights = 1;
+
+		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
+		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
+	}
+
+	void App::DrawCube()
+	{
+		auto vs = m_resLib.Get<VertexShader>("light");
+		auto ps = m_resLib.Get<PixelShader>("light");
 		vs->Bind();
 		ps->Bind();
-		m_resLib.Get<InputLayout>("basic")->Bind();
+		m_resLib.Get<InputLayout>("light")->Bind();
 
 		auto vb = m_resLib.Get<Buffer>("cube.vb");
 		auto ib = m_resLib.Get<Buffer>("cube.ib");
@@ -154,56 +223,61 @@ namespace GA
 		ib->BindAsIB(DXGI_FORMAT_R32_UINT);
 
 
-		m_resLib.Get<ShaderResourceView>("brickwall")->PSBind(ps->GetResBinding("tex"));
-		m_resLib.Get<SamplerState>("anisotropic_wrap")->PSBind(ps->GetResBinding("samplerState"));
+		m_resLib.Get<ShaderResourceView>("brickwall")->PSBind(ps->GetResBinding("textureMap"));
+		m_resLib.Get<SamplerState>("anisotropic_wrap")->PSBind(ps->GetResBinding("textureMapSampler"));
 
 		// bind cbuf
-		XMVECTOR rotQuat = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(45.0f), XMConvertToRadians(45.0f), XMConvertToRadians(45.0f));
-		XMMATRIX transformXM = XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixRotationQuaternion(rotQuat) * XMMatrixTranslation(0.0f, 0.0f, 0.0f);
-
-		XMMATRIX viewXM = XMMatrixInverse(nullptr, XMMatrixTranslation(0.0f, 0.0f, -8.0f));
-		XMMATRIX projectionXM = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)m_window->GetDesc().width / m_window->GetDesc().height, 0.1f, 1000.0f);
+		XMVECTOR rotQuat = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(0.0f), XMConvertToRadians(0.0f), XMConvertToRadians(0.0f));
+		XMMATRIX transformXM = XMMatrixScaling(10.0f, 1.0f, 10.0f) * XMMatrixRotationQuaternion(rotQuat) * XMMatrixTranslation(0.0f, 0.0f, 0.0f);
 
 		XMFLOAT4X4 transform;
 		XMFLOAT4X4 viewProjection;
+		XMFLOAT4X4 normalMatrix;
 		XMStoreFloat4x4(&transform, XMMatrixTranspose(transformXM));
-		XMStoreFloat4x4(&viewProjection, XMMatrixTranspose(viewXM * projectionXM));
+		XMStoreFloat4x4(&viewProjection, XMMatrixTranspose(m_camera.GetViewMatrix() * m_camera.GetProjectionMatrix()));
+		XMStoreFloat4x4(&normalMatrix, XMMatrixInverse(nullptr, transformXM));
 
-		m_resLib.Get<Buffer>("basic.vs.SystemCBuf")->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
-		m_resLib.Get<Buffer>("basic.vs.SystemCBuf")->SetData(&viewProjection);
+		{
+			GA::Utils::LightVSSystemCBuf cbuf;
+			cbuf.viewProjection = viewProjection;
+			cbuf.viewPos = m_camera.GetDesc().position;
+			m_resLib.Get<Buffer>("light.vs.SystemCBuf")->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
+			m_resLib.Get<Buffer>("light.vs.SystemCBuf")->SetData(&cbuf);
+		}
 
-		m_resLib.Get<Buffer>("basic.vs.EntityCBuf")->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
-		m_resLib.Get<Buffer>("basic.vs.EntityCBuf")->SetData(&transform);
 
-		XMFLOAT4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
-		m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
-		m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->SetData(&color);
+		{
+			GA::Utils::LightVSEntityCBuf cbuf;
+			cbuf.transform = transform;
+			cbuf.normalMatrix = normalMatrix;
+			m_resLib.Get<Buffer>("light.vs.EntityCBuf")->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+			m_resLib.Get<Buffer>("light.vs.EntityCBuf")->SetData(&cbuf);
+		}
+
+		{
+			GA::Utils::LightPSEntityCBuf cbuf;
+			cbuf.mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			cbuf.mat.tiling = { 1.0f, 1.0f };
+			cbuf.mat.shininess = 32.0f;
+			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
+			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
+		}
 
 		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
-	void App::OnImGuiRender()
-	{
-		m_imguiManager.Begin();
-
-		static bool open = true;
-		ImGui::ShowDemoWindow(&open);
-
-		m_imguiManager.End();
-	}
-
 	void App::SetShaders()
 	{
-		m_resLib.Add("basic", VertexShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/basic.vs.hlsl")));
-		m_resLib.Add("basic", PixelShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/basic.ps.hlsl")));
-		m_resLib.Add("basic", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("basic")));
+		m_resLib.Add("light", VertexShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/light.vs.hlsl")));
+		m_resLib.Add("light", PixelShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/light.ps.hlsl")));
+		m_resLib.Add("light", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("light")));
 	}
 
 	void App::SetBuffers()
 	{
 		{
-			auto vert = GA::Utils::CreateCubeVertices(true, false);
+			auto vert = GA::Utils::CreateCubeVertices(true, true);
 			auto ind = GA::Utils::CreateCubeIndices();
 
 			D3D11_BUFFER_DESC desc = {};
@@ -212,7 +286,7 @@ namespace GA
 			desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 			desc.CPUAccessFlags = 0;
 			desc.MiscFlags = 0;
-			desc.StructureByteStride = 5 * sizeof(float);
+			desc.StructureByteStride = 8 * sizeof(float);
 			m_resLib.Add("cube.vb", Buffer::Create(m_context.get(), desc, vert.data()));
 
 			desc = {};
@@ -228,35 +302,46 @@ namespace GA
 
 		{
 			D3D11_BUFFER_DESC desc = {};
-			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.ByteWidth = sizeof(GA::Utils::LightVSSystemCBuf);
 			desc.Usage = D3D11_USAGE_DYNAMIC;
 			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = 0;
-			m_resLib.Add("basic.vs.SystemCBuf", Buffer::Create(m_context.get(), desc, nullptr));
+			m_resLib.Add("light.vs.SystemCBuf", Buffer::Create(m_context.get(), desc, nullptr));
 		}
 
 		{
 			D3D11_BUFFER_DESC desc = {};
-			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.ByteWidth = sizeof(GA::Utils::LightVSEntityCBuf);
 			desc.Usage = D3D11_USAGE_DYNAMIC;
 			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = 0;
-			m_resLib.Add("basic.vs.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
+			m_resLib.Add("light.vs.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
 		}
 
 		{
 			D3D11_BUFFER_DESC desc = {};
-			desc.ByteWidth = sizeof(XMFLOAT4);
+			desc.ByteWidth = sizeof(GA::Utils::LightPSSystemCBuf);
 			desc.Usage = D3D11_USAGE_DYNAMIC;
 			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = 0;
-			m_resLib.Add("basic.ps.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
+			m_resLib.Add("light.ps.SystemCBuf", Buffer::Create(m_context.get(), desc, nullptr));
+		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(GA::Utils::LightPSEntityCBuf);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add("light.ps.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
 		}
 	}
 
@@ -305,6 +390,8 @@ namespace GA
 
 	bool App::OnWindowResizedEvent(GDX11::WindowResizeEvent& event)
 	{
+		m_camera.SetAspect((float)m_window->GetDesc().width / m_window->GetDesc().height);
+
 		D3D11_VIEWPORT vp = {};
 		vp.TopLeftX = 0.0f;
 		vp.TopLeftY = 0.0f;
