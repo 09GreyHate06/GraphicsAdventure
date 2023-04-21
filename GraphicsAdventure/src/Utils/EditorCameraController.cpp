@@ -99,7 +99,8 @@ namespace GA::Utils
 	void EditorCameraController::Rotate(const DirectX::XMFLOAT2& delta)
 	{
 		XMFLOAT3 rot = m_camera->GetDesc().rotation;
-		rot.x += delta.y * m_rotationSpeed;
+
+		rot.x = std::clamp(rot.x + delta.y * m_rotationSpeed, -90.0f, 90.0f);
 		rot.y += delta.x * m_rotationSpeed;
 
 		m_camera->SetRotation(rot);

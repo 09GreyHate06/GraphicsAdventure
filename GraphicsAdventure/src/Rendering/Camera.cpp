@@ -97,6 +97,7 @@ namespace GA
 
 	void Camera::UpdateProjectionMatrix()
 	{
+		//XMMATRIX projectionXM = XMMatrixOrthographicLH(1.0f, 720.0f / 1280.0f, 0.1f, 100.0f);
 		XMMATRIX projectionXM = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_desc.fov), m_desc.aspect, m_desc.nearZ, m_desc.farZ);
 		XMStoreFloat4x4(&m_projection, projectionXM);
 	}

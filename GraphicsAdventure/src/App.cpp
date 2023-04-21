@@ -257,7 +257,7 @@ namespace GA
 		{
 			GA::Utils::LightPSEntityCBuf cbuf;
 			cbuf.mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			cbuf.mat.tiling = { 1.0f, 1.0f };
+			cbuf.mat.tiling = { 10.0f, 10.0f };
 			cbuf.mat.shininess = 32.0f;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
