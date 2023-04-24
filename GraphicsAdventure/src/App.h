@@ -31,6 +31,8 @@ namespace GA
 		void SetBuffers();
 		void SetTextures();
 
+		void UpdateMSAADependentRes();
+
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 
 		Time m_time;
@@ -45,7 +47,7 @@ namespace GA
 
 		// msaa
 		bool m_msaaEnabled = false;
+		int m_sampleCountArrayIndex = 1;
 		int m_sampleCount = 4;
-		int m_sampleQuality = 1;
 	};
 }
