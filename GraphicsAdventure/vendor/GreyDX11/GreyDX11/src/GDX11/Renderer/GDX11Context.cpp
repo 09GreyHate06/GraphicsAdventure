@@ -4,6 +4,7 @@
 #include "../Core/Log.h"
 #include "../Core/GDX11Assert.h"
 
+#pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "D3DCompiler.lib")
 
@@ -43,9 +44,48 @@ namespace GDX11
 		));
 	}
 
+	GDX11Context::GDX11Context()
+	{
+		Log::Init();
+
+		HRESULT hr;
+
+		UINT swapCreateFlags = 0;
+#ifdef GDX11_DEBUG
+		swapCreateFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif // GDX11_DEBUG
+
+		GDX11_CONTEXT_THROW_INFO(D3D11CreateDevice(
+			nullptr,
+			D3D_DRIVER_TYPE_HARDWARE,
+			nullptr,
+			swapCreateFlags,
+			nullptr,
+			0,
+			D3D11_SDK_VERSION,
+			&m_device,
+			nullptr,
+			&m_deviceContext
+		));
+	}
+
+	void GDX11Context::SetSwapChain(DXGI_SWAP_CHAIN_DESC& scDesc)
+	{
+		GDX11_CORE_ASSERT(IsWindow(scDesc.OutputWindow), "Not a window");
+
+		HRESULT hr;
+
+		Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+		GDX11_CONTEXT_THROW_INFO(CreateDXGIFactory(__uuidof(IDXGIFactory), &factory));
+
+		GDX11_CONTEXT_THROW_INFO(factory->CreateSwapChain(m_device.Get(), &scDesc, &m_swapChain));
+	}
+
 	GDX11Context::~GDX11Context()
 	{
 	}
+
+
 
 
 

@@ -31,7 +31,6 @@ namespace GA
 		void SetBuffers();
 		void SetTextures();
 
-
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 
 		Time m_time;
@@ -43,5 +42,10 @@ namespace GA
 
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
+
+		// msaa
+		bool m_msaaEnabled = false;
+		int m_sampleCount = 4;
+		int m_sampleQuality = 1;
 	};
 }
