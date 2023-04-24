@@ -14,10 +14,13 @@ namespace GDX11
 	{
 	public:
 		GDX11Context(const DXGI_SWAP_CHAIN_DESC& scDesc);
+		GDX11Context();
 		GDX11Context(const GDX11Context&) = delete;
 		GDX11Context& operator=(const GDX11Context&) = delete;
 
 		~GDX11Context();
+
+		void SetSwapChain(DXGI_SWAP_CHAIN_DESC& scDesc);
 
 		ID3D11Device* const GetDevice() const { return m_device.Get(); }
 		ID3D11DeviceContext* const GetDeviceContext() const { return m_deviceContext.Get(); }

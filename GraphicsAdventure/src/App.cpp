@@ -15,6 +15,8 @@ namespace GA
 {
 	App::App()
 	{
+		m_msaaEnabled = true;
+
 		{
 			WindowDesc desc = {};
 			desc.className = "GraphicsAdventure";
@@ -38,17 +40,18 @@ namespace GA
 			desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 			desc.Flags = 0;
 			desc.OutputWindow = m_window->GetNativeWindow();
-			desc.SampleDesc.Count = 1;
-			desc.SampleDesc.Quality = 0;
+			desc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
+			desc.SampleDesc.Quality = m_msaaEnabled ? m_sampleQuality : 0;
 			desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 			desc.Windowed = TRUE;
-			m_context = std::make_unique<GDX11Context>(desc);
+			m_context = std::make_unique<GDX11Context>();
+			m_context->SetSwapChain(desc);
 		}
 
 		{
 			D3D11_RENDER_TARGET_VIEW_DESC desc = {};
 			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+			desc.ViewDimension = m_msaaEnabled ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
 			desc.Texture2D.MipSlice = 0;
 			ComPtr<ID3D11Texture2D> backbuffer;
 			HRESULT hr;
@@ -59,7 +62,7 @@ namespace GA
 		{
 			D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 			dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-			dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+			dsvDesc.ViewDimension = m_msaaEnabled ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
 			dsvDesc.Texture2D.MipSlice = 0;
 
 			D3D11_TEXTURE2D_DESC texDesc = {};
@@ -68,8 +71,8 @@ namespace GA
 			texDesc.ArraySize = 1;
 			texDesc.MipLevels = 1;
 			texDesc.Format = dsvDesc.Format;
-			texDesc.SampleDesc.Count = 1;
-			texDesc.SampleDesc.Quality = 0;
+			texDesc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
+			texDesc.SampleDesc.Quality = m_msaaEnabled ? m_sampleQuality : 0;
 			texDesc.Usage = D3D11_USAGE_DEFAULT;
 			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 			texDesc.CPUAccessFlags = 0;
@@ -80,7 +83,13 @@ namespace GA
 
 		m_resLib.Add("default", BlendState::Create(m_context.get(), CD3D11_BLEND_DESC(CD3D11_DEFAULT())));
 		m_resLib.Add("default", DepthStencilState::Create(m_context.get(), CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT())));
-		m_resLib.Add("default", RasterizerState::Create(m_context.get(), CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT())));
+
+		{
+			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
+			desc.MultisampleEnable = m_msaaEnabled;
+			m_resLib.Add("default", RasterizerState::Create(m_context.get(), desc));
+		}
+
 
 		SetShaders();
 		SetBuffers();
