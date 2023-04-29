@@ -110,10 +110,10 @@ namespace GA::Utils
 	void EditorCameraController::Zoom(float delta)
 	{
 		m_distance -= delta * m_zoomSpeed;
-		if (m_distance < 1.0f)
+		if (m_distance < 1.0f && delta > 0.0f)
 		{
 			XMVECTOR focalPointXM = XMLoadFloat3(&m_focalPoint);
-			focalPointXM += m_camera->GetForwardDirection();
+			focalPointXM += m_camera->GetForwardDirection() * delta * m_zoomSpeed;
 			XMStoreFloat3(&m_focalPoint, focalPointXM);
 		}
 

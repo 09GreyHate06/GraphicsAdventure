@@ -107,7 +107,23 @@ namespace GA
 		m_resLib.Get<RasterizerState>("default")->Bind();
 
 		SetLight();
-		DrawCube();
+		DrawPlane(m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(10.0f, 1.0f, 10.0f),
+			XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 25.0f);
+
+
+		m_resLib.Get<RasterizerState>("no_cull")->Bind();
+
+		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(-0.5f, 0.0f, 1.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
+			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window3Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+
+		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(0.5f, 0.0f, 0.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
+			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window2Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+
+		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(-0.5, 0.0f, -1.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
+			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window1Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+
+		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(0.0f, 2.0f, -3.0f), XMFLOAT3(-45.0f, 0.0f, 0.0f), XMFLOAT3(3.0f, 1.0f, 3.0f),
+			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window0Alpha), XMFLOAT2(3.0f, 3.0f), 25.0f);
 	}
 
 	void App::OnImGuiRender()
@@ -120,7 +136,7 @@ namespace GA
 
 		const char* items[] = { "MSAA 2x", "MSAA 4x", "MSAA 8x" };
 		ImGui::PushItemWidth(100.0f);
-		if (ImGui::Combo("Sample Count", &m_sampleCountArrayIndex, items, IM_ARRAYSIZE(items)) && m_msaaEnabled)
+		if (ImGui::Combo("##Samples", &m_sampleCountArrayIndex, items, IM_ARRAYSIZE(items)) && m_msaaEnabled)
 		{
 			switch (m_sampleCountArrayIndex)
 			{
@@ -138,9 +154,14 @@ namespace GA
 			UpdateMSAADependentRes();
 		}
 		ImGui::PopItemWidth();
-
 		
+		ImGui::End();
 
+		ImGui::Begin("Windows apha");
+		ImGui::SliderFloat("Window 0", &m_window0Alpha, 0.0f, 1.0f);
+		ImGui::SliderFloat("Window 1", &m_window1Alpha, 0.0f, 1.0f);
+		ImGui::SliderFloat("Window 2", &m_window2Alpha, 0.0f, 1.0f);
+		ImGui::SliderFloat("Window 3", &m_window3Alpha, 0.0f, 1.0f);
 		ImGui::End();
 
 		m_imguiManager.End();
@@ -154,41 +175,20 @@ namespace GA
 		XMFLOAT3 direction;
 		XMStoreFloat3(&direction, directionXM);
 
-		GA::Utils::LightPSSystemCBuf cbuf;
+		GA::Utils::LightPSSystemCBuf cbuf = {};
 		cbuf.dirLights[0].color = { 1.0f, 1.0f, 1.0f };
 		cbuf.dirLights[0].direction = direction;
 		cbuf.dirLights[0].ambientIntensity = 0.2f;
 		cbuf.dirLights[0].intensity = 1.0f;
 
-		cbuf.pointLights[0].color = { 1.0f, 0.0f, 0.0f };
-		cbuf.pointLights[0].position = { 0.0f, 4.0f, 0.0f };
-		cbuf.pointLights[0].ambientIntensity = 0.2f;
-		cbuf.pointLights[0].intensity = 1.0f;
-		cbuf.pointLights[0].attConstant = 1.0f;
-		cbuf.pointLights[0].attLinear = 0.045f;
-		cbuf.pointLights[0].attQuadratic = 0.0075f;
-
-		cbuf.spotLights[0].color = { 0.0f, 0.0f, 1.0f };
-		cbuf.spotLights[0].direction = { 0.0f, -1.0f, 0.0f };
-		cbuf.spotLights[0].position = { 0.0f, 4.0f, 0.0f };
-		cbuf.spotLights[0].ambientIntensity = 0.2f;
-		cbuf.spotLights[0].intensity = 1.0f;
-		cbuf.spotLights[0].attConstant = 1.0f;
-		cbuf.spotLights[0].attLinear = 0.045f;
-		cbuf.spotLights[0].attQuadratic = 0.0075f;
-		cbuf.spotLights[0].innerCutOffCosAngle = cosf(XMConvertToRadians(15.0f));
-		cbuf.spotLights[0].outerCutOffCosAngle = cosf(XMConvertToRadians(20.0f));
-
-
 		cbuf.activeDirLights = 1;
-		cbuf.activePointLights = 1;
-		cbuf.activeSpotLights = 1;
 
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
 	}
 
-	void App::DrawCube()
+	void App::DrawPlane(const std::shared_ptr<ShaderResourceView>& tex, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
+		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
 		auto vs = m_resLib.Get<VertexShader>("light");
 		auto ps = m_resLib.Get<PixelShader>("light");
@@ -196,18 +196,18 @@ namespace GA
 		ps->Bind();
 		m_resLib.Get<InputLayout>("light")->Bind();
 
-		auto vb = m_resLib.Get<Buffer>("cube.vb");
-		auto ib = m_resLib.Get<Buffer>("cube.ib");
+		auto vb = m_resLib.Get<Buffer>("plane.vb");
+		auto ib = m_resLib.Get<Buffer>("plane.ib");
 		vb->BindAsVB();
 		ib->BindAsIB(DXGI_FORMAT_R32_UINT);
 
 
-		m_resLib.Get<ShaderResourceView>("brickwall")->PSBind(ps->GetResBinding("textureMap"));
+		tex->PSBind(ps->GetResBinding("textureMap"));
 		m_resLib.Get<SamplerState>("anisotropic_wrap")->PSBind(ps->GetResBinding("textureMapSampler"));
 
 		// bind cbuf
-		XMVECTOR rotQuat = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(0.0f), XMConvertToRadians(0.0f), XMConvertToRadians(0.0f));
-		XMMATRIX transformXM = XMMatrixScaling(10.0f, 1.0f, 10.0f) * XMMatrixRotationQuaternion(rotQuat) * XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+		XMVECTOR rotQuat = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(rot.x), XMConvertToRadians(rot.y), XMConvertToRadians(rot.z));
+		XMMATRIX transformXM = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixRotationQuaternion(rotQuat) * XMMatrixTranslation(pos.x, pos.y, pos.z);
 
 		XMFLOAT4X4 transform;
 		XMFLOAT4X4 viewProjection;
@@ -217,7 +217,7 @@ namespace GA
 		XMStoreFloat4x4(&normalMatrix, XMMatrixInverse(nullptr, transformXM));
 
 		{
-			GA::Utils::LightVSSystemCBuf cbuf;
+			GA::Utils::LightVSSystemCBuf cbuf = {};
 			cbuf.viewProjection = viewProjection;
 			cbuf.viewPos = m_camera.GetDesc().position;
 			m_resLib.Get<Buffer>("light.vs.SystemCBuf")->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
@@ -226,7 +226,7 @@ namespace GA
 
 
 		{
-			GA::Utils::LightVSEntityCBuf cbuf;
+			GA::Utils::LightVSEntityCBuf cbuf = {};
 			cbuf.transform = transform;
 			cbuf.normalMatrix = normalMatrix;
 			m_resLib.Get<Buffer>("light.vs.EntityCBuf")->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
@@ -234,10 +234,10 @@ namespace GA
 		}
 
 		{
-			GA::Utils::LightPSEntityCBuf cbuf;
-			cbuf.mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			cbuf.mat.tiling = { 10.0f, 10.0f };
-			cbuf.mat.shininess = 32.0f;
+			GA::Utils::LightPSEntityCBuf cbuf = {};
+			cbuf.mat.color = col;
+			cbuf.mat.tiling = tiling;
+			cbuf.mat.shininess = shininess;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
@@ -276,6 +276,30 @@ namespace GA
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = sizeof(uint32_t);
 			m_resLib.Add("cube.ib", Buffer::Create(m_context.get(), desc, ind.data()));
+		}
+
+
+		{
+			auto vert = GA::Utils::CreatePlaneVertices(true, true);
+			auto ind = GA::Utils::CreatePlaneIndices();
+
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = (uint32_t)vert.size() * sizeof(float);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 8 * sizeof(float);
+			m_resLib.Add("plane.vb", Buffer::Create(m_context.get(), desc, vert.data()));
+
+			desc = {};
+			desc.ByteWidth = (uint32_t)ind.size() * sizeof(uint32_t);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = sizeof(uint32_t);
+			m_resLib.Add("plane.ib", Buffer::Create(m_context.get(), desc, ind.data()));
 		}
 
 
@@ -365,6 +389,30 @@ namespace GA
 
 			m_resLib.Add("brickwall", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 		}
+
+		{
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/transparent_window.png", false, 4);
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = image.width;
+			texDesc.Height = image.height;
+			texDesc.MipLevels = 0;
+			texDesc.ArraySize = 1;
+			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = texDesc.Format;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = -1;
+
+			m_resLib.Add("transparent_window", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+		}
 	}
 
 	void App::UpdateMSAADependentRes()
@@ -435,6 +483,16 @@ namespace GA
 			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
 			desc.MultisampleEnable = m_msaaEnabled;
 			m_resLib.Add("default", RasterizerState::Create(m_context.get(), desc));
+		}
+
+		{
+			if (m_resLib.Exist<RasterizerState>("no_cull"))
+				m_resLib.Remove<RasterizerState>("no_cull");
+
+			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
+			desc.MultisampleEnable = m_msaaEnabled;
+			desc.CullMode = D3D11_CULL_NONE;
+			m_resLib.Add("no_cull", RasterizerState::Create(m_context.get(), desc));
 		}
 	}
 
