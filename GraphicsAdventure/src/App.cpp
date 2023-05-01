@@ -28,9 +28,27 @@ namespace GA
 		}
 
 		m_context = std::make_unique<GDX11Context>();
-		UpdateMSAADependentRes();
 
-		m_resLib.Add("default", BlendState::Create(m_context.get(), CD3D11_BLEND_DESC(CD3D11_DEFAULT())));
+		SetSwapChain();
+		SetViews();
+		SetStates();
+
+		{
+			D3D11_BLEND_DESC desc = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
+			desc.AlphaToCoverageEnable = FALSE;
+			desc.IndependentBlendEnable = FALSE;
+			auto& brt = desc.RenderTarget[0];
+			brt.BlendEnable = TRUE;
+			brt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+			brt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+			brt.BlendOp = D3D11_BLEND_OP_ADD;
+			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
+			brt.DestBlendAlpha = D3D11_BLEND_ONE;
+			brt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+			brt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+			m_resLib.Add("default", BlendState::Create(m_context.get(), desc));
+		}
+
 		m_resLib.Add("default", DepthStencilState::Create(m_context.get(), CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT())));
 
 
@@ -132,9 +150,13 @@ namespace GA
 
 		ImGui::Begin("MSAA");
 		if (ImGui::Checkbox("Enable", &m_msaaEnabled))
-			UpdateMSAADependentRes();
+		{
+			SetSwapChain();
+			SetViews();
+			SetStates();
+		}
 
-		const char* items[] = { "MSAA 2x", "MSAA 4x", "MSAA 8x" };
+		static constexpr char* items[] = { "MSAA 2x", "MSAA 4x", "MSAA 8x" };
 		ImGui::PushItemWidth(100.0f);
 		if (ImGui::Combo("##Samples", &m_sampleCountArrayIndex, items, IM_ARRAYSIZE(items)) && m_msaaEnabled)
 		{
@@ -151,7 +173,9 @@ namespace GA
 				break;
 			}
 
-			UpdateMSAADependentRes();
+			SetSwapChain();
+			SetViews();
+			SetStates();
 		}
 		ImGui::PopItemWidth();
 		
@@ -415,28 +439,28 @@ namespace GA
 		}
 	}
 
-	void App::UpdateMSAADependentRes()
+	void App::SetSwapChain()
 	{
-		{
-			DXGI_SWAP_CHAIN_DESC desc = {};
-			desc.BufferDesc.Width = 0;
-			desc.BufferDesc.Height = 0;
-			desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			desc.BufferDesc.RefreshRate.Numerator = 0;
-			desc.BufferDesc.RefreshRate.Denominator = 0;
-			desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-			desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-			desc.BufferCount = 1;
-			desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-			desc.Flags = 0;
-			desc.OutputWindow = m_window->GetNativeWindow();
-			desc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
-			desc.SampleDesc.Quality = m_msaaEnabled ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
-			desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-			desc.Windowed = TRUE;
-			m_context->SetSwapChain(desc);
-		}
-
+		DXGI_SWAP_CHAIN_DESC desc = {};
+		desc.BufferDesc.Width = 0;
+		desc.BufferDesc.Height = 0;
+		desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		desc.BufferDesc.RefreshRate.Numerator = 0;
+		desc.BufferDesc.RefreshRate.Denominator = 0;
+		desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+		desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+		desc.BufferCount = 1;
+		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		desc.Flags = 0;
+		desc.OutputWindow = m_window->GetNativeWindow();
+		desc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
+		desc.SampleDesc.Quality = m_msaaEnabled ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+		desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+		desc.Windowed = TRUE;
+		m_context->SetSwapChain(desc);
+	}
+	void App::SetViews()
+	{
 		{
 			if (m_resLib.Exist<RenderTargetView>("main"))
 				m_resLib.Remove<RenderTargetView>("main");
@@ -475,7 +499,9 @@ namespace GA
 
 			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
 		}
-
+	}
+	void App::SetStates()
+	{
 		{
 			if (m_resLib.Exist<RasterizerState>("default"))
 				m_resLib.Remove<RasterizerState>("default");
@@ -498,6 +524,8 @@ namespace GA
 
 	bool App::OnWindowResizedEvent(GDX11::WindowResizeEvent& event)
 	{
+		if (event.GetWidth() == 0 || event.GetHeight() == 0) return false;
+
 		m_camera.SetAspect((float)m_window->GetDesc().width / m_window->GetDesc().height);
 
 		D3D11_VIEWPORT vp = {};
@@ -515,40 +543,7 @@ namespace GA
 		HRESULT hr;
 		GDX11_CONTEXT_THROW_INFO(m_context->GetSwapChain()->ResizeBuffers(1, event.GetWidth(), event.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, 0));
 
-
-		{
-			ComPtr<ID3D11Texture2D> backbuffer;
-			GDX11_CONTEXT_THROW_INFO(m_context->GetSwapChain()->GetBuffer(0, __uuidof(ID3D11Texture2D), &backbuffer));
-
-			D3D11_RENDER_TARGET_VIEW_DESC desc = {};
-			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-			desc.Texture2D.MipSlice = 0;
-
-			m_resLib.Add("main", RenderTargetView::Create(m_context.get(), desc, Texture2D::Create(m_context.get(), backbuffer.Get())));
-		}
-
-		{
-			D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-			dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-			dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-			dsvDesc.Texture2D.MipSlice = 0;
-
-			D3D11_TEXTURE2D_DESC texDesc = {};
-			texDesc.Width = event.GetWidth();
-			texDesc.Height = event.GetHeight();
-			texDesc.ArraySize = 1;
-			texDesc.MipLevels = 1;
-			texDesc.Format = dsvDesc.Format;
-			texDesc.SampleDesc.Count = 1;
-			texDesc.SampleDesc.Quality = 0;
-			texDesc.Usage = D3D11_USAGE_DEFAULT;
-			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-			texDesc.CPUAccessFlags = 0;
-			texDesc.MiscFlags = 0;
-
-			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
-		}
+		SetViews();
 
 		return false;
 	}

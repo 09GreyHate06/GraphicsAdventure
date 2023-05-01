@@ -32,7 +32,9 @@ namespace GA
 		void SetBuffers();
 		void SetTextures();
 
-		void UpdateMSAADependentRes();
+		void SetSwapChain();
+		void SetViews();
+		void SetStates();
 
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 

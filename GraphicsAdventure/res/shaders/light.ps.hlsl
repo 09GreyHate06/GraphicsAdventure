@@ -83,20 +83,6 @@ float4 main(VSOutput input) : SV_Target
     
     float4 textureMapCol = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
     
-    
-    // screen door transparency
-    // https://digitalrune.github.io/DigitalRune-Documentation/html/fa431d48-b457-4c70-a590-d44b0840ab1e.htm#Implementation
-    float4x4 thresholdMatrix =
-    {
-        1.0 / 17.0, 9.0 / 17.0, 3.0 / 17.0, 11.0 / 17.0,
-        13.0 / 17.0, 5.0 / 17.0, 15.0 / 17.0, 7.0 / 17.0,
-        4.0 / 17.0, 12.0 / 17.0, 2.0 / 17.0, 10.0 / 17.0,
-        16.0 / 17.0, 8.0 / 17.0, 14.0 / 17.0, 6.0 / 17.0
-    };
-    clip(textureMapCol.a - thresholdMatrix[input.position.x % 4][input.position.y % 4]);
-    
-    
-    
     float3 dirLightPhong = float3(0.0f, 0.0f, 0.0f);
     float3 pointLightPhong = float3(0.0f, 0.0f, 0.0f);
     float3 spotLightPhong = float3(0.0f, 0.0f, 0.0f);
