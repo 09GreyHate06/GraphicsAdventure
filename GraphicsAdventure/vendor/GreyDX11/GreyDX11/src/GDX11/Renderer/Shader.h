@@ -69,10 +69,12 @@ namespace GDX11
 		virtual ID3DBlob* GetByteCode() const override { return m_byteCode.Get(); }
 		virtual ID3D11ShaderReflection* GetReflection() const override { return m_reflection.Get(); }
 
-		static std::shared_ptr<VertexShader> Create(GDX11Context* context, const std::string& src);
+		static std::shared_ptr<VertexShader> Create(GDX11Context* context, const std::string& src, const std::string& target);
+		static std::shared_ptr<VertexShader> Create(GDX11Context* context, const std::string& csoFile);
 
 	private:
-		VertexShader(GDX11Context* context, const std::string& src);
+		VertexShader(GDX11Context* context, const std::string& src, const std::string& target);
+		VertexShader(GDX11Context* context, const std::string& csoFile);
 
 		Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
 		Microsoft::WRL::ComPtr<ID3DBlob> m_byteCode;
@@ -93,11 +95,13 @@ namespace GDX11
 		virtual ID3DBlob* GetByteCode() const override { return m_byteCode.Get(); }
 		virtual ID3D11ShaderReflection* GetReflection() const override { return m_reflection.Get(); }
 
-		static std::shared_ptr<PixelShader> Create(GDX11Context* context, const std::string& src);
+		static std::shared_ptr<PixelShader> Create(GDX11Context* context, const std::string& src, const std::string& target);
+		static std::shared_ptr<PixelShader> Create(GDX11Context* context, const std::string& csoFile);
 		static std::shared_ptr<PixelShader> Create(GDX11Context* context);
 
 	private:
-		PixelShader(GDX11Context* context, const std::string& src);
+		PixelShader(GDX11Context* context, const std::string& src, const std::string& target);
+		PixelShader(GDX11Context* context, const std::string& csoFile);
 		PixelShader(GDX11Context* context);
 
 		Microsoft::WRL::ComPtr<ID3D11PixelShader> m_ps;
@@ -119,11 +123,13 @@ namespace GDX11
 		virtual ID3DBlob* GetByteCode() const override { return m_byteCode.Get(); }
 		virtual ID3D11ShaderReflection* GetReflection() const override { return m_reflection.Get(); }
 
-		static std::shared_ptr<GeometryShader> Create(GDX11Context* context, const std::string& src);
+		static std::shared_ptr<GeometryShader> Create(GDX11Context* context, const std::string& src, const std::string& target);
+		static std::shared_ptr<GeometryShader> Create(GDX11Context* context, const std::string& csoFile);
 		static std::shared_ptr<GeometryShader> Create(GDX11Context* context);
 
 	private:
-		GeometryShader(GDX11Context* context, const std::string& src);
+		GeometryShader(GDX11Context* context, const std::string& src, const std::string& target);
+		GeometryShader(GDX11Context* context, const std::string& csoFile);
 		GeometryShader(GDX11Context* context);
 
 		Microsoft::WRL::ComPtr<ID3D11GeometryShader> m_gs;

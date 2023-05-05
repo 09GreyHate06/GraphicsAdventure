@@ -1,6 +1,7 @@
 #include "Shader.h"
 #include "../Core/GDX11Assert.h"
 #include <fstream>
+#include "../Utils/Utils.h"
 
 using namespace Microsoft::WRL;
 
@@ -8,16 +9,26 @@ using namespace Microsoft::WRL;
 
 namespace GDX11
 {
-	VertexShader::VertexShader(GDX11Context* context, const std::string& src)
+	VertexShader::VertexShader(GDX11Context* context, const std::string& src, const std::string& target)
 		: Shader(context)
 	{
 		HRESULT hr;
+
 		ComPtr<ID3DBlob> errorBlob;
-		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &m_byteCode, &errorBlob)))
+		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", target.c_str(), 0, 0, &m_byteCode, &errorBlob)))
 			throw GDX11_SHADER_COMPILATION_EXCEPT(hr, static_cast<const char*>(errorBlob->GetBufferPointer()));
 
 		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreateVertexShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_vs));
 
+		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
+	}
+
+	VertexShader::VertexShader(GDX11Context* context, const std::string& csoFile)
+		: Shader(context)
+	{
+		HRESULT hr;
+		GDX11_CONTEXT_THROW_INFO(D3DReadFileToBlob(Utils::ToWideString(csoFile).c_str(), &m_byteCode));
+		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreateVertexShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_vs));
 		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
 	}
 
@@ -39,23 +50,37 @@ namespace GDX11
 		return slot;
 	}
 
-	std::shared_ptr<VertexShader> VertexShader::Create(GDX11Context* context, const std::string& src)
+	std::shared_ptr<VertexShader> VertexShader::Create(GDX11Context* context, const std::string& src, const std::string& target)
 	{
-		return std::shared_ptr<VertexShader>(new VertexShader(context, src));
+		return std::shared_ptr<VertexShader>(new VertexShader(context, src, target));
+	}
+
+	std::shared_ptr<VertexShader> VertexShader::Create(GDX11Context* context, const std::string& csoFile)
+	{
+		return std::shared_ptr<VertexShader>(new VertexShader(context, csoFile));
 	}
 
 
-	PixelShader::PixelShader(GDX11Context* context, const std::string& src)
+	PixelShader::PixelShader(GDX11Context* context, const std::string& src, const std::string& target)
 		: Shader(context)
 	{
 		HRESULT hr;
 		ComPtr<ID3DBlob> errorBlob;
-		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &m_byteCode, &errorBlob)))
+		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", target.c_str(), 0, 0, &m_byteCode, &errorBlob)))
 			throw GDX11_SHADER_COMPILATION_EXCEPT(hr, static_cast<const char*>(errorBlob->GetBufferPointer()));
 
 		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreatePixelShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_ps));
 		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
 	}	
+
+	PixelShader::PixelShader(GDX11Context* context, const std::string& csoFile)
+		: Shader(context)
+	{
+		HRESULT hr;
+		GDX11_CONTEXT_THROW_INFO(D3DReadFileToBlob(Utils::ToWideString(csoFile).c_str(), &m_byteCode));
+		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreatePixelShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_ps));
+		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
+	}
 	
 	PixelShader::PixelShader(GDX11Context* context)
 		: Shader(context), m_ps(nullptr), m_byteCode(nullptr), m_reflection(nullptr)
@@ -80,9 +105,14 @@ namespace GDX11
 		return slot;
 	}
 
-	std::shared_ptr<PixelShader> PixelShader::Create(GDX11Context* context, const std::string& src)
+	std::shared_ptr<PixelShader> PixelShader::Create(GDX11Context* context, const std::string& src, const std::string& target)
 	{
-		return std::shared_ptr<PixelShader>(new PixelShader(context, src));
+		return std::shared_ptr<PixelShader>(new PixelShader(context, src, target));
+	}
+
+	std::shared_ptr<PixelShader> PixelShader::Create(GDX11Context* context, const std::string& csoFile)
+	{
+		return std::shared_ptr<PixelShader>(new PixelShader(context, csoFile));
 	}
 
 	std::shared_ptr<PixelShader> PixelShader::Create(GDX11Context* context)
@@ -92,14 +122,23 @@ namespace GDX11
 
 
 
-	GeometryShader::GeometryShader(GDX11Context* context, const std::string& src)
+	GeometryShader::GeometryShader(GDX11Context* context, const std::string& src, const std::string& target)
 		: Shader(context)
 	{
 		HRESULT hr;
 		ComPtr<ID3DBlob> errorBlob;
-		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", "gs_4_0", 0, 0, &m_byteCode, &errorBlob)))
+		if (FAILED(hr = D3DCompile(src.data(), src.size(), nullptr, nullptr, nullptr, "main", target.c_str(), 0, 0, &m_byteCode, &errorBlob)))
 			throw GDX11_SHADER_COMPILATION_EXCEPT(hr, static_cast<const char*>(errorBlob->GetBufferPointer()));
 
+		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreateGeometryShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_gs));
+		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
+	}
+
+	GeometryShader::GeometryShader(GDX11Context* context, const std::string& csoFile)
+		: Shader(context)
+	{
+		HRESULT hr;
+		GDX11_CONTEXT_THROW_INFO(D3DReadFileToBlob(Utils::ToWideString(csoFile).c_str(), &m_byteCode));
 		GDX11_CONTEXT_THROW_INFO(m_context->GetDevice()->CreateGeometryShader(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), nullptr, &m_gs));
 		GDX11_CONTEXT_THROW_INFO(D3DReflect(m_byteCode->GetBufferPointer(), m_byteCode->GetBufferSize(), __uuidof(ID3D11ShaderReflection), &m_reflection));
 	}
@@ -127,9 +166,14 @@ namespace GDX11
 		return slot;
 	}
 
-	std::shared_ptr<GeometryShader> GeometryShader::Create(GDX11Context* context, const std::string& src)
+	std::shared_ptr<GeometryShader> GeometryShader::Create(GDX11Context* context, const std::string& src, const std::string& target)
 	{
-		return std::shared_ptr<GeometryShader>(new GeometryShader(context, src));
+		return std::shared_ptr<GeometryShader>(new GeometryShader(context, src, target));
+	}
+
+	std::shared_ptr<GeometryShader> GeometryShader::Create(GDX11Context* context, const std::string& csoFile)
+	{
+		return std::shared_ptr<GeometryShader>(new GeometryShader(context, csoFile));
 	}
 
 	std::shared_ptr<GeometryShader> GeometryShader::Create(GDX11Context* context)

@@ -14,6 +14,7 @@ namespace GDX11::Utils
 	};
 
 	ImageData LoadImageFile(const std::string& filename, bool flipImageY, int reqComponents);
-
 	void FreeImageData(ImageData* data);
+
+	std::wstring ToWideString(const std::string& str);
 }

@@ -60,4 +60,14 @@
       <Filter>Utils</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="res\shaders\basic.ps.hlsl" />
+    <FxCompile Include="res\shaders\basic.vs.hlsl" />
+    <FxCompile Include="res\shaders\light.ps.hlsl" />
+    <FxCompile Include="res\shaders\light.vs.hlsl" />
+    <FxCompile Include="res\shaders\screen.vs.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\shaders\depth_peeling.hlsli" />
+  </ItemGroup>
 </Project>

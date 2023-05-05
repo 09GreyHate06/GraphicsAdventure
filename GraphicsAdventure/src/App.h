@@ -24,8 +24,11 @@ namespace GA
 		void OnRender();
 		void OnImGuiRender();
 
-		void SetLight();
-		void DrawPlane(const std::shared_ptr<GDX11::ShaderResourceView>& tex, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
+		void SetLight(const std::shared_ptr<GDX11::PixelShader>& ps);
+		void DrawPlane(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& tex, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
+			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
+
+		void DrawCube(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& tex, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
 			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
 
 		void SetShaders();
@@ -33,8 +36,10 @@ namespace GA
 		void SetTextures();
 
 		void SetSwapChain();
-		void SetViews();
+		void SetMainViews();
 		void SetStates();
+
+		void SetDepthPeelRes();
 
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 
@@ -48,16 +53,13 @@ namespace GA
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
 
-		// msaa
-		bool m_msaaEnabled = false;
-		int m_sampleCountArrayIndex = 1;
-		int m_sampleCount = 4;
+		// depth peeling
+		const int m_numDepthPeelPass = 6;
 
+		float m_redBoxAlpha = 0.5f;
+		float m_greenBoxAlpha = 0.5f;
+		float m_blueBoxAlpha = 0.5f;
 
-
-		float m_window0Alpha = 1.0f;
-		float m_window1Alpha = 1.0f;
-		float m_window2Alpha = 1.0f;
-		float m_window3Alpha = 1.0f;
+		int m_showDepthPeelLayer = 6; // 6 == All
 	};
 }

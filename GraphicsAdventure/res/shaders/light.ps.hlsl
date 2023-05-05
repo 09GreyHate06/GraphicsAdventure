@@ -1,10 +1,20 @@
+#include "depth_peeling.hlsli"
+
 struct VSOutput
 {
     float4 position : SV_Position;
-    float2 texCoord : TEXCOORD;
+    float4 pPosition : TEXCOORD1; // projected pos
+    float2 texCoord : TEXCOORD2;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
+};
+
+
+struct PSOutput
+{
+    float4 color : SV_Target;
+    float depth : SV_Depth;
 };
 
 struct DirectionalLight
@@ -77,8 +87,12 @@ SamplerState textureMapSampler : register(s0);
 float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 normal, float ambientIntensity, float lightIntensity);
 float Attenuation(float c, float l, float q, float d);
 
-float4 main(VSOutput input) : SV_Target
+PSOutput main(VSOutput input)
 {
+    float3 pixelClipSpacePos = input.pPosition.xyz / input.pPosition.w;
+    
+    DepthPeel(pixelClipSpacePos);
+    
     float3 normal = normalize(input.normal);
     
     float4 textureMapCol = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
@@ -123,7 +137,10 @@ float4 main(VSOutput input) : SV_Target
         spotLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity) * att * intensity;
     }
 
-    return float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
+    PSOutput pso;
+    pso.color = float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
+    pso.depth = pixelClipSpacePos.z;
+    return pso;
 }
 
 float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 normal, float ambientIntensity, float lightIntensity)

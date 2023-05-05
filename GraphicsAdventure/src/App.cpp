@@ -1,7 +1,7 @@
 #include "App.h"
 #include <iostream>
 #include <imgui.h>
-#include <GDX11/Utils/Loader.h>
+#include <GDX11/Utils/Utils.h>
 #include <DirectXMath.h>
 
 #include "Utils/BasicMesh.h"
@@ -15,8 +15,6 @@ namespace GA
 {
 	App::App()
 	{
-		m_msaaEnabled = true;
-
 		{
 			WindowDesc desc = {};
 			desc.className = "GraphicsAdventure";
@@ -30,31 +28,14 @@ namespace GA
 		m_context = std::make_unique<GDX11Context>();
 
 		SetSwapChain();
-		SetViews();
+		SetMainViews();
 		SetStates();
-
-		{
-			D3D11_BLEND_DESC desc = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
-			desc.AlphaToCoverageEnable = FALSE;
-			desc.IndependentBlendEnable = FALSE;
-			auto& brt = desc.RenderTarget[0];
-			brt.BlendEnable = TRUE;
-			brt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
-			brt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-			brt.BlendOp = D3D11_BLEND_OP_ADD;
-			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
-			brt.DestBlendAlpha = D3D11_BLEND_ONE;
-			brt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
-			brt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-			m_resLib.Add("default", BlendState::Create(m_context.get(), desc));
-		}
-
-		m_resLib.Add("default", DepthStencilState::Create(m_context.get(), CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT())));
-
 
 		SetShaders();
 		SetBuffers();
 		SetTextures();
+
+		SetDepthPeelRes();
 
 		D3D11_VIEWPORT vp = {};
 		vp.TopLeftX = 0.0f;
@@ -116,84 +97,143 @@ namespace GA
 
 	void App::OnRender()
 	{
-		m_resLib.Get<RenderTargetView>("main")->Bind(m_resLib.Get<DepthStencilView>("main").get());
-		m_resLib.Get<RenderTargetView>("main")->Clear(0.1f, 0.1f, 0.1f, 1.0f);
-		m_resLib.Get<DepthStencilView>("main")->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
-		
-		m_resLib.Get<BlendState>("default")->Bind(nullptr, 0xff);
-		m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
-		m_resLib.Get<RasterizerState>("default")->Bind();
+		{
+			m_resLib.Get<BlendState>("blend")->Bind(nullptr, 0xff);
+			m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
+			m_resLib.Get<RasterizerState>("default")->Bind();
 
-		SetLight();
-		DrawPlane(m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(10.0f, 1.0f, 10.0f),
-			XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 25.0f);
+			m_resLib.Get<RasterizerState>("no_cull")->Bind();
+
+			auto vs = m_resLib.Get<VertexShader>("light");
+			auto ps = m_resLib.Get<PixelShader>("light");
+			vs->Bind();
+			ps->Bind();
+			m_resLib.Get<InputLayout>("light")->Bind();
+
+			SetLight(ps);
+			// render screen m_numberDepthPeelPass times
+			// compare prev depth to curdepth before rendering
+			for (int i = 0; i < m_numDepthPeelPass; i++)
+			{
+				std::string curId = "depth_peel" + std::to_string(i);
+				auto curRTV = m_resLib.Get<RenderTargetView>(curId);
+				auto curDSV = m_resLib.Get<DepthStencilView>(curId);
+				curRTV->Bind(curDSV.get());
+				curRTV->Clear(0.1f, 0.1f, 0.1f, 0.0f);
+				curDSV->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+
+				// bind prev dsv texture
+				m_resLib.Get<ShaderResourceView>("d_depth_peel" + std::to_string(std::clamp(i - 1, 0, m_numDepthPeelPass - 1)))->PSBind(ps->GetResBinding("prevDepthMap"));
+
+				// limitation: fully opaque obj override prev transparent obj
+				//DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, -3.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+				//	XMFLOAT3(10.0f, 1.0f, 10.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 25.0f);
+
+				for (int z = -1; z <= 1; z++)
+				{
+					for (int y = -1; y <= 1; y++)
+					{
+						for (int x = -1; x <= 1; x++)
+						{
+							float mult = 1.5f;
+							XMFLOAT4 col;
+							switch (z)
+							{
+							case -1:
+								col = { 1.0f, 0.3f, 0.3f, m_redBoxAlpha };
+								break;
+							case 0:
+								col = { 0.3f, 1.0f, 0.3f, m_greenBoxAlpha };
+								break;
+							case 1:
+								col = { 0.3f, 0.3f, 1.0f, m_blueBoxAlpha };
+								break;
+							}
+
+							DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("white"), XMFLOAT3(x * mult, y * mult, z * mult), XMFLOAT3(0.0f, 0.0f, 0.0f), 
+								XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 25.0f);
+						}
+					}
+				}
+			}
+		}
 
 
-		m_resLib.Get<RasterizerState>("no_cull")->Bind();
+		// render quad
+		{
+			m_resLib.Get<RenderTargetView>("main")->Bind(m_resLib.Get<DepthStencilView>("main").get());
+			m_resLib.Get<RenderTargetView>("main")->Clear(0.1f, 0.1f, 0.1f, 0.0f);
+			m_resLib.Get<DepthStencilView>("main")->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
-		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(-0.5f, 0.0f, 1.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window3Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+			m_resLib.Get<DepthStencilState>("depth_disabled")->Bind(0xff);
 
-		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(0.5f, 0.0f, 0.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window2Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+			auto vs = m_resLib.Get<VertexShader>("screen");
+			auto ps = m_resLib.Get<PixelShader>("basic");
 
-		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(-0.5, 0.0f, -1.0f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window1Alpha), XMFLOAT2(1.0f, 1.0f), 25.0f);
+			vs->Bind();
+			ps->Bind();
+			m_resLib.Get<InputLayout>("screen")->Bind();
 
-		DrawPlane(m_resLib.Get<ShaderResourceView>("transparent_window"), XMFLOAT3(0.0f, 2.0f, -3.0f), XMFLOAT3(-45.0f, 0.0f, 0.0f), XMFLOAT3(3.0f, 1.0f, 3.0f),
-			XMFLOAT4(1.0f, 1.0f, 1.0f, m_window0Alpha), XMFLOAT2(3.0f, 3.0f), 25.0f);
+			auto vb = m_resLib.Get<Buffer>("screen.vb");
+			auto ib = m_resLib.Get<Buffer>("screen.ib");
+			vb->BindAsVB();
+			ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+
+			// m_showDepthPeelLayer == m_numDepthPeelPass when user pick show All
+			if (m_showDepthPeelLayer == m_numDepthPeelPass)
+			{
+				for (int i = m_numDepthPeelPass - 1; i >= 0; i--)
+				{
+					m_resLib.Get<ShaderResourceView>("c_depth_peel" + std::to_string(i))->PSBind(ps->GetResBinding("tex"));
+					m_resLib.Get<SamplerState>("point_wrap")->PSBind(ps->GetResBinding("samplerState"));
+
+					XMFLOAT4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+					m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
+					m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->SetData(&color);
+
+					m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+					GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+				}
+			}
+			else
+			{
+				m_resLib.Get<ShaderResourceView>("c_depth_peel" + std::to_string(m_showDepthPeelLayer))->PSBind(ps->GetResBinding("tex"));
+				m_resLib.Get<SamplerState>("point_wrap")->PSBind(ps->GetResBinding("samplerState"));
+
+				XMFLOAT4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+				m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
+				m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->SetData(&color);
+
+				m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+			}
+		}
 	}
 
 	void App::OnImGuiRender()
 	{
 		m_imguiManager.Begin();
 
-		ImGui::Begin("MSAA");
-		if (ImGui::Checkbox("Enable", &m_msaaEnabled))
-		{
-			SetSwapChain();
-			SetViews();
-			SetStates();
-		}
-
-		static constexpr char* items[] = { "MSAA 2x", "MSAA 4x", "MSAA 8x" };
-		ImGui::PushItemWidth(100.0f);
-		if (ImGui::Combo("##Samples", &m_sampleCountArrayIndex, items, IM_ARRAYSIZE(items)) && m_msaaEnabled)
-		{
-			switch (m_sampleCountArrayIndex)
-			{
-			case 0:
-				m_sampleCount = 2;
-				break;
-			case 1:
-				m_sampleCount = 4;
-				break;
-			case 2:
-				m_sampleCount = 8;
-				break;
-			}
-
-			SetSwapChain();
-			SetViews();
-			SetStates();
-		}
+		ImGui::Begin("Box apha");
+		ImGui::PushItemWidth(80.0f);
+		ImGui::DragFloat("red boxes", &m_redBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::DragFloat("green boxes", &m_greenBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::DragFloat("blue boxes", &m_blueBoxAlpha, 0.001f, 0.0f, 1.0f);
 		ImGui::PopItemWidth();
-		
 		ImGui::End();
 
-		ImGui::Begin("Windows apha");
-		ImGui::SliderFloat("Window 0", &m_window0Alpha, 0.0f, 1.0f);
-		ImGui::SliderFloat("Window 1", &m_window1Alpha, 0.0f, 1.0f);
-		ImGui::SliderFloat("Window 2", &m_window2Alpha, 0.0f, 1.0f);
-		ImGui::SliderFloat("Window 3", &m_window3Alpha, 0.0f, 1.0f);
+		ImGui::Begin("Depth Peel Layers");
+		ImGui::PushItemWidth(80.0f);
+		static const char* layers[] = { "1", "2", "3", "4", "5", "6", "All" };
+		ImGui::Combo("Show Layer", &m_showDepthPeelLayer, layers, IM_ARRAYSIZE(layers));
+		ImGui::PopItemWidth();
 		ImGui::End();
 
 		m_imguiManager.End();
 	}
 
-	void App::SetLight()
+	void App::SetLight(const std::shared_ptr<GDX11::PixelShader>& ps)
 	{
-		auto ps = m_resLib.Get<PixelShader>("light");
 		XMVECTOR rotQuatXM = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(50.0f), XMConvertToRadians(-30.0f), 0.0f);
 		XMVECTOR directionXM = XMVector3Rotate(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), rotQuatXM);
 		XMFLOAT3 direction;
@@ -211,15 +251,9 @@ namespace GA
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
 	}
 
-	void App::DrawPlane(const std::shared_ptr<ShaderResourceView>& tex, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
+	void App::DrawPlane(const std::shared_ptr<VertexShader>& vs, const std::shared_ptr<PixelShader>& ps, const std::shared_ptr<ShaderResourceView>& tex, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
 		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
-		auto vs = m_resLib.Get<VertexShader>("light");
-		auto ps = m_resLib.Get<PixelShader>("light");
-		vs->Bind();
-		ps->Bind();
-		m_resLib.Get<InputLayout>("light")->Bind();
-
 		auto vb = m_resLib.Get<Buffer>("plane.vb");
 		auto ib = m_resLib.Get<Buffer>("plane.ib");
 		vb->BindAsVB();
@@ -270,11 +304,71 @@ namespace GA
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
+	void App::DrawCube(const std::shared_ptr<VertexShader>& vs, const std::shared_ptr<PixelShader>& ps, const std::shared_ptr<ShaderResourceView>& tex, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
+		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
+	{
+		auto vb = m_resLib.Get<Buffer>("cube.vb");
+		auto ib = m_resLib.Get<Buffer>("cube.ib");
+		vb->BindAsVB();
+		ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+
+
+		tex->PSBind(ps->GetResBinding("textureMap"));
+		m_resLib.Get<SamplerState>("anisotropic_wrap")->PSBind(ps->GetResBinding("textureMapSampler"));
+
+		// bind cbuf
+		XMVECTOR rotQuat = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(rot.x), XMConvertToRadians(rot.y), XMConvertToRadians(rot.z));
+		XMMATRIX transformXM = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixRotationQuaternion(rotQuat) * XMMatrixTranslation(pos.x, pos.y, pos.z);
+
+		XMFLOAT4X4 transform;
+		XMFLOAT4X4 viewProjection;
+		XMFLOAT4X4 normalMatrix;
+		XMStoreFloat4x4(&transform, XMMatrixTranspose(transformXM));
+		XMStoreFloat4x4(&viewProjection, XMMatrixTranspose(m_camera.GetViewMatrix() * m_camera.GetProjectionMatrix()));
+		XMStoreFloat4x4(&normalMatrix, XMMatrixInverse(nullptr, transformXM));
+
+		{
+			GA::Utils::LightVSSystemCBuf cbuf = {};
+			cbuf.viewProjection = viewProjection;
+			cbuf.viewPos = m_camera.GetDesc().position;
+			m_resLib.Get<Buffer>("light.vs.SystemCBuf")->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
+			m_resLib.Get<Buffer>("light.vs.SystemCBuf")->SetData(&cbuf);
+		}
+
+
+		{
+			GA::Utils::LightVSEntityCBuf cbuf = {};
+			cbuf.transform = transform;
+			cbuf.normalMatrix = normalMatrix;
+			m_resLib.Get<Buffer>("light.vs.EntityCBuf")->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+			m_resLib.Get<Buffer>("light.vs.EntityCBuf")->SetData(&cbuf);
+		}
+
+		{
+			GA::Utils::LightPSEntityCBuf cbuf = {};
+			cbuf.mat.color = col;
+			cbuf.mat.tiling = tiling;
+			cbuf.mat.shininess = shininess;
+			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
+			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
+		}
+
+		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+	}
+
 	void App::SetShaders()
 	{
-		m_resLib.Add("light", VertexShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/light.vs.hlsl")));
-		m_resLib.Add("light", PixelShader::Create(m_context.get(), GDX11::Utils::LoadText("res/shaders/light.ps.hlsl")));
+		m_resLib.Add("light", VertexShader::Create(m_context.get(), "res/cso/light.vs.cso"));
+		m_resLib.Add("light", PixelShader::Create(m_context.get(), "res/cso/light.ps.cso"));
 		m_resLib.Add("light", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("light")));
+
+		m_resLib.Add("basic", VertexShader::Create(m_context.get(), "res/cso/basic.vs.cso"));
+		m_resLib.Add("basic", PixelShader::Create(m_context.get(), "res/cso/basic.ps.cso"));
+		m_resLib.Add("basic", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("basic")));
+
+		m_resLib.Add("screen", VertexShader::Create(m_context.get(), "res/cso/screen.vs.cso"));
+		m_resLib.Add("screen", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("screen")));
 	}
 
 	void App::SetBuffers()
@@ -326,6 +420,53 @@ namespace GA
 			m_resLib.Add("plane.ib", Buffer::Create(m_context.get(), desc, ind.data()));
 		}
 
+		{
+			float vert[] = {
+				-1.0f,  1.0f,
+				 1.0f,  1.0f,
+				 1.0f, -1.0f,
+				-1.0f, -1.0f
+			};
+			uint32_t ind[] = {
+				0, 1, 2,
+				2, 3, 0
+			};
+
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(vert);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 2 * sizeof(float);
+			m_resLib.Add("screen.vb", Buffer::Create(m_context.get(), desc, vert));
+
+			desc = {};
+			desc.ByteWidth = sizeof(ind);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = sizeof(uint32_t);
+			m_resLib.Add("screen.ib", Buffer::Create(m_context.get(), desc, ind));
+		}
+
+
+
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add("basic.ps.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
+		}
+
+
+
 
 		{
 			D3D11_BUFFER_DESC desc = {};
@@ -375,7 +516,7 @@ namespace GA
 	void App::SetTextures()
 	{
 		{
-			D3D11_SAMPLER_DESC desc = {};
+			D3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
 			desc.Filter = D3D11_FILTER_ANISOTROPIC;
 			desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
 			desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -388,6 +529,19 @@ namespace GA
 			desc.MinLOD = 0.0f;
 			desc.MaxLOD = D3D11_FLOAT32_MAX;
 			m_resLib.Add("anisotropic_wrap", SamplerState::Create(m_context.get(), desc));
+		}
+
+		{
+			D3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+			desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+			desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+			desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+			desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+			for (int i = 0; i < 4; i++)
+				desc.BorderColor[i] = 0.0f;
+			desc.MinLOD = 0.0f;
+			desc.MaxLOD = D3D11_FLOAT32_MAX;
+			m_resLib.Add("point_wrap", SamplerState::Create(m_context.get(), desc));
 		}
 
 		{
@@ -437,6 +591,30 @@ namespace GA
 
 			m_resLib.Add("transparent_window", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 		}
+
+		{
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = 1;
+			texDesc.Height = 1;
+			texDesc.MipLevels = 0;
+			texDesc.ArraySize = 1;
+			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = texDesc.Format;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = -1;
+
+			uint32_t col = 0xffffffff;
+			m_resLib.Add("white", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, &col)));
+		}
 	}
 
 	void App::SetSwapChain()
@@ -453,13 +631,14 @@ namespace GA
 		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 		desc.Flags = 0;
 		desc.OutputWindow = m_window->GetNativeWindow();
-		desc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
-		desc.SampleDesc.Quality = m_msaaEnabled ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+		desc.SampleDesc.Count =  1;
+		desc.SampleDesc.Quality =  0;
 		desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 		desc.Windowed = TRUE;
 		m_context->SetSwapChain(desc);
 	}
-	void App::SetViews()
+
+	void App::SetMainViews()
 	{
 		{
 			if (m_resLib.Exist<RenderTargetView>("main"))
@@ -467,7 +646,7 @@ namespace GA
 
 			D3D11_RENDER_TARGET_VIEW_DESC desc = {};
 			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			desc.ViewDimension = m_msaaEnabled ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
+			desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 			desc.Texture2D.MipSlice = 0;
 			ComPtr<ID3D11Texture2D> backbuffer;
 			HRESULT hr;
@@ -481,7 +660,7 @@ namespace GA
 
 			D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 			dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-			dsvDesc.ViewDimension = m_msaaEnabled ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
+			dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 			dsvDesc.Texture2D.MipSlice = 0;
 
 			D3D11_TEXTURE2D_DESC texDesc = {};
@@ -490,8 +669,8 @@ namespace GA
 			texDesc.ArraySize = 1;
 			texDesc.MipLevels = 1;
 			texDesc.Format = dsvDesc.Format;
-			texDesc.SampleDesc.Count = m_msaaEnabled ? m_sampleCount : 1;
-			texDesc.SampleDesc.Quality = m_msaaEnabled ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+			texDesc.SampleDesc.Count =  1;
+			texDesc.SampleDesc.Quality = 0;
 			texDesc.Usage = D3D11_USAGE_DEFAULT;
 			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 			texDesc.CPUAccessFlags = 0;
@@ -500,15 +679,96 @@ namespace GA
 			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
 		}
 	}
+
+	void App::SetDepthPeelRes()
+	{
+		for (int i = 0; i < m_numDepthPeelPass; i++)
+		{
+			std::string id = "depth_peel" + std::to_string(i);
+
+			// rtv
+			{
+				if (m_resLib.Exist<RenderTargetView>(id))
+				{
+					m_resLib.Remove<RenderTargetView>(id);
+					m_resLib.Remove<ShaderResourceView>("c_" + id);
+				}
+
+				D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+				rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+				rtvDesc.Texture2D.MipSlice = 0;
+
+				D3D11_TEXTURE2D_DESC texDesc = {};
+				texDesc.Width = m_window->GetDesc().width;
+				texDesc.Height = m_window->GetDesc().height;
+				texDesc.MipLevels = 1;
+				texDesc.ArraySize = 1;
+				texDesc.Format = rtvDesc.Format;
+				texDesc.SampleDesc.Count = 1;
+				texDesc.SampleDesc.Quality = 0;
+				texDesc.Usage = D3D11_USAGE_DEFAULT;
+				texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+				texDesc.CPUAccessFlags = 0;
+				texDesc.MiscFlags = 0;
+
+				m_resLib.Add(id, RenderTargetView::Create(m_context.get(), rtvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
+
+				D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+				srvDesc.Format = rtvDesc.Format;
+				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				srvDesc.Texture2D.MostDetailedMip = 0;
+				srvDesc.Texture2D.MipLevels = 1;
+
+				m_resLib.Add("c_" + id, ShaderResourceView::Create(m_context.get(), srvDesc, m_resLib.Get<RenderTargetView>(id)->GetTexture()));
+			}
+
+			// dsv
+			{
+				if (m_resLib.Exist<DepthStencilView>(id))
+				{
+					m_resLib.Remove<DepthStencilView>(id);
+					m_resLib.Remove<ShaderResourceView>("d_" + id);
+				}
+
+				D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+				dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+				dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+				dsvDesc.Texture2D.MipSlice = 0;
+
+				D3D11_TEXTURE2D_DESC texDesc = {};
+				texDesc.Width = m_window->GetDesc().width;
+				texDesc.Height = m_window->GetDesc().height;
+				texDesc.ArraySize = 1;
+				texDesc.MipLevels = 1;
+				texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+				texDesc.SampleDesc.Count = 1;
+				texDesc.SampleDesc.Quality = 0;
+				texDesc.Usage = D3D11_USAGE_DEFAULT;
+				texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+				texDesc.CPUAccessFlags = 0;
+				texDesc.MiscFlags = 0;
+
+				m_resLib.Add(id, DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
+
+				D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+				srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				srvDesc.Texture2D.MipLevels = 1;
+				srvDesc.Texture2D.MostDetailedMip = 0;
+
+				m_resLib.Add("d_" + id, ShaderResourceView::Create(m_context.get(), srvDesc, m_resLib.Get<DepthStencilView>(id)->GetTexture2D()));
+			}
+		}
+	}
+
 	void App::SetStates()
 	{
 		{
 			if (m_resLib.Exist<RasterizerState>("default"))
 				m_resLib.Remove<RasterizerState>("default");
 
-			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
-			desc.MultisampleEnable = m_msaaEnabled;
-			m_resLib.Add("default", RasterizerState::Create(m_context.get(), desc));
+			m_resLib.Add("default", RasterizerState::Create(m_context.get(), CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT())));
 		}
 
 		{
@@ -516,9 +776,50 @@ namespace GA
 				m_resLib.Remove<RasterizerState>("no_cull");
 
 			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
-			desc.MultisampleEnable = m_msaaEnabled;
 			desc.CullMode = D3D11_CULL_NONE;
 			m_resLib.Add("no_cull", RasterizerState::Create(m_context.get(), desc));
+		}
+
+		{
+			if (m_resLib.Exist<BlendState>("blend"))
+				m_resLib.Remove<BlendState>("blend");
+
+			D3D11_BLEND_DESC desc = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
+			desc.AlphaToCoverageEnable = FALSE;
+			desc.IndependentBlendEnable = FALSE;
+			auto& brt = desc.RenderTarget[0];
+			brt.BlendEnable = TRUE;
+			brt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
+			brt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+			brt.DestBlendAlpha = D3D11_BLEND_ONE;
+			brt.BlendOp = D3D11_BLEND_OP_ADD;
+			brt.BlendOpAlpha = D3D11_BLEND_OP_MAX;
+			brt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+			m_resLib.Add("blend", BlendState::Create(m_context.get(), desc));
+		}
+
+		{
+			if (m_resLib.Exist<BlendState>("default"))
+				m_resLib.Remove<BlendState>("default");
+
+			m_resLib.Add("default", BlendState::Create(m_context.get(), CD3D11_BLEND_DESC(CD3D11_DEFAULT())));
+		}
+
+		{
+			if (m_resLib.Exist<DepthStencilState>("default"))
+				m_resLib.Remove<DepthStencilState>("default");
+
+			m_resLib.Add("default", DepthStencilState::Create(m_context.get(), CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT())));
+		}
+
+		{
+			if (m_resLib.Exist<DepthStencilState>("depth_disabled"))
+				m_resLib.Remove<DepthStencilState>("depth_disabled");
+
+			D3D11_DEPTH_STENCIL_DESC desc = CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT());
+			desc.DepthEnable = FALSE;
+			m_resLib.Add("depth_disabled", DepthStencilState::Create(m_context.get(), desc));
 		}
 	}
 
@@ -543,7 +844,8 @@ namespace GA
 		HRESULT hr;
 		GDX11_CONTEXT_THROW_INFO(m_context->GetSwapChain()->ResizeBuffers(1, event.GetWidth(), event.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, 0));
 
-		SetViews();
+		SetMainViews();
+		SetDepthPeelRes();
 
 		return false;
 	}

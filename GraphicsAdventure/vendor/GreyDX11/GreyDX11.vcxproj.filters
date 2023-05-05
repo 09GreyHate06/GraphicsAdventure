@@ -112,7 +112,7 @@
     <ClInclude Include="GreyDX11\src\GDX11\Renderer\Texture2D.h">
       <Filter>GDX11\Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="GreyDX11\src\GDX11\Utils\Loader.h">
+    <ClInclude Include="GreyDX11\src\GDX11\Utils\Utils.h">
       <Filter>GDX11\Utils</Filter>
     </ClInclude>
   </ItemGroup>
@@ -168,7 +168,7 @@
     <ClCompile Include="GreyDX11\src\GDX11\Renderer\Texture2D.cpp">
       <Filter>GDX11\Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="GreyDX11\src\GDX11\Utils\Loader.cpp">
+    <ClCompile Include="GreyDX11\src\GDX11\Utils\Utils.cpp">
       <Filter>GDX11\Utils</Filter>
     </ClCompile>
   </ItemGroup>

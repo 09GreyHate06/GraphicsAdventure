@@ -1,4 +1,4 @@
-#include "Loader.h"
+#include "Utils.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image/stb_image.h>
@@ -39,6 +39,22 @@ namespace GDX11::Utils
 	{
 		stbi_image_free(data->pixels);
 		data->pixels = nullptr;
+	}
+
+	std::wstring ToWideString(const std::string& str)
+	{
+		if (str.empty()) return std::wstring();
+
+		// determine required length of new string
+		size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.length(), 0, 0);
+
+		// construct new string of required length
+		std::wstring ret(reqLength, L'\0');
+
+		// convert old string to new string
+		::MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.length(), &ret[0], (int)ret.length());
+
+		return ret;
 	}
 }
 
