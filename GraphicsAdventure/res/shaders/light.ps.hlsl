@@ -3,18 +3,10 @@
 struct VSOutput
 {
     float4 position : SV_Position;
-    float4 pPosition : TEXCOORD1; // projected pos
-    float2 texCoord : TEXCOORD2;
+    float2 texCoord : TEXCOORD;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
-};
-
-
-struct PSOutput
-{
-    float4 color : SV_Target;
-    float depth : SV_Depth;
 };
 
 struct DirectionalLight
@@ -87,11 +79,10 @@ SamplerState textureMapSampler : register(s0);
 float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 normal, float ambientIntensity, float lightIntensity);
 float Attenuation(float c, float l, float q, float d);
 
-PSOutput main(VSOutput input)
+float4 main(VSOutput input) : SV_Target
 {
-    float3 pixelClipSpacePos = input.pPosition.xyz / input.pPosition.w;
-    
-    DepthPeel(pixelClipSpacePos);
+    // SV_Position is the pixel screen space position in Pixel shader
+    DepthPeel(floor(input.position.xy), input.position.z);
     
     float3 normal = normalize(input.normal);
     
@@ -136,11 +127,8 @@ PSOutput main(VSOutput input)
         
         spotLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity) * att * intensity;
     }
-
-    PSOutput pso;
-    pso.color = float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
-    pso.depth = pixelClipSpacePos.z;
-    return pso;
+    
+    return float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
 }
 
 float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 normal, float ambientIntensity, float lightIntensity)

@@ -8,8 +8,7 @@ struct VSInput
 struct VSOutput
 {
     float4 position : SV_Position;
-    float4 pPosition : TEXCOORD1; // projected pos
-    float2 texCoord : TEXCOORD2;
+    float2 texCoord : TEXCOORD;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
@@ -33,10 +32,9 @@ VSOutput main(VSInput input)
     VSOutput vso;
     float4 pixelWorldSpacePos = mul(float4(input.position, 1.0f), transform);
     vso.position = mul(pixelWorldSpacePos, viewProjection);
-    vso.pPosition = vso.position;
     vso.texCoord = input.texCoord;
     vso.normal = mul(input.normal, (float3x3) normalMatrix);
-    vso.pixelWorldSpacePos = pixelWorldSpacePos;
+    vso.pixelWorldSpacePos = pixelWorldSpacePos.xyz;
     vso.viewPos = viewPos;
     
     return vso;
