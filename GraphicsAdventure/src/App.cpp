@@ -790,10 +790,10 @@ namespace GA
 			auto& brt = desc.RenderTarget[0];
 			brt.BlendEnable = TRUE;
 			brt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
-			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
 			brt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-			brt.DestBlendAlpha = D3D11_BLEND_ONE;
 			brt.BlendOp = D3D11_BLEND_OP_ADD;
+			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
+			brt.DestBlendAlpha = D3D11_BLEND_ONE;
 			brt.BlendOpAlpha = D3D11_BLEND_OP_MAX;
 			brt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 			m_resLib.Add("blend", BlendState::Create(m_context.get(), desc));
