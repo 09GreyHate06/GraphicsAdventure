@@ -11,6 +11,8 @@ using namespace GDX11;
 using namespace Microsoft::WRL;
 using namespace DirectX;
 
+#define EPSILONF 0.0001f
+
 namespace GA
 {
 	App::App()
@@ -149,6 +151,8 @@ namespace GA
 								col = { 0.3f, 0.3f, 1.0f, m_blueBoxAlpha };
 								break;
 							}
+
+							if ((col.w - EPSILONF) <= 0.0f) continue;
 
 							DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("white"), XMFLOAT3(x * mult, y * mult, z * mult), XMFLOAT3(0.0f, 0.0f, 0.0f), 
 								XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 25.0f);
