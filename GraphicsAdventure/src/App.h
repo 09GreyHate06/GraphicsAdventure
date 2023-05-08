@@ -36,10 +36,8 @@ namespace GA
 		void SetTextures();
 
 		void SetSwapChain();
-		void SetMainViews();
+		void SetViews();
 		void SetStates();
-
-		void SetDepthPeelRes();
 
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 
@@ -53,13 +51,8 @@ namespace GA
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
 
-		// depth peeling
-		const int m_numDepthPeelPass = 6;
-
 		float m_redBoxAlpha = 0.5f;
 		float m_greenBoxAlpha = 0.5f;
 		float m_blueBoxAlpha = 0.5f;
-
-		int m_showDepthPeelLayer = 6; // 6 == All
 	};
 }

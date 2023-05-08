@@ -11,7 +11,7 @@ using namespace GDX11;
 using namespace Microsoft::WRL;
 using namespace DirectX;
 
-#define EPSILONF 0.0001f
+#define EPSILONF 0.00001f
 
 namespace GA
 {
@@ -30,14 +30,12 @@ namespace GA
 		m_context = std::make_unique<GDX11Context>();
 
 		SetSwapChain();
-		SetMainViews();
+		SetViews();
 		SetStates();
 
 		SetShaders();
 		SetBuffers();
 		SetTextures();
-
-		SetDepthPeelRes();
 
 		D3D11_VIEWPORT vp = {};
 		vp.TopLeftX = 0.0f;
@@ -99,12 +97,18 @@ namespace GA
 
 	void App::OnRender()
 	{
-		{
-			m_resLib.Get<BlendState>("blend")->Bind(nullptr, 0xff);
-			m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
-			m_resLib.Get<RasterizerState>("default")->Bind();
+		auto mainRTV = m_resLib.Get<RenderTargetView>("main");
+		auto mainDSV = m_resLib.Get<DepthStencilView>("main");
 
+		// solid meshes
+		{
 			m_resLib.Get<RasterizerState>("no_cull")->Bind();
+			m_resLib.Get<BlendState>("default")->Bind(nullptr, 0xff);
+			m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
+
+			mainRTV->Bind(mainDSV.get());
+			mainRTV->Clear(0.0f, 0.0f, 0.0f, 0.0f);
+			mainDSV->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
 			auto vs = m_resLib.Get<VertexShader>("light");
 			auto ps = m_resLib.Get<PixelShader>("light");
@@ -113,104 +117,84 @@ namespace GA
 			m_resLib.Get<InputLayout>("light")->Bind();
 
 			SetLight(ps);
-			// render screen m_numberDepthPeelPass times
-			// compare prev depth to curdepth before rendering
-			for (int i = 0; i < m_numDepthPeelPass; i++)
+			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, 0.0f, 2.5f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(10.0f, 1.0f, 10.0f),
+				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 32.0f);
+		}
+
+		// transparent meshes
+		{
+			m_resLib.Get<BlendState>("weighted_blended")->Bind(nullptr, 0xff);
+			m_resLib.Get<DepthStencilState>("default_depth_mask_zero")->Bind(0xff);
+
+			auto transparentRTVA = m_resLib.Get<RenderTargetViewArray>("weighted_blended");
+			RenderTargetView::Bind(*transparentRTVA, mainDSV.get());
+			transparentRTVA->at(0)->Clear(0.0f, 0.0f, 0.0f, 0.0f); // accumulation
+			transparentRTVA->at(1)->Clear(1.0f, 1.0f, 1.0f, 1.0f); // reveal
+
+			// bind transparent shader
+
+			auto vs = m_resLib.Get<VertexShader>("light");
+			auto ps = m_resLib.Get<PixelShader>("weighted_blended");
+			vs->Bind();
+			ps->Bind();
+			m_resLib.Get<InputLayout>("light")->Bind();
+
+			SetLight(ps);
+
+			for (int z = -1; z <= 1; z++)
 			{
-				std::string curId = "depth_peel" + std::to_string(i);
-				auto curRTV = m_resLib.Get<RenderTargetView>(curId);
-				auto curDSV = m_resLib.Get<DepthStencilView>(curId);
-				curRTV->Bind(curDSV.get());
-				curRTV->Clear(0.1f, 0.1f, 0.1f, 0.0f);
-				curDSV->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
-
-				// bind prev dsv texture
-				m_resLib.Get<ShaderResourceView>("d_depth_peel" + std::to_string(std::clamp(i - 1, 0, m_numDepthPeelPass - 1)))->PSBind(ps->GetResBinding("prevDepthMap"));
-
-				// limitation: fully opaque obj override prev transparent obj
-				//DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, -3.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-				//	XMFLOAT3(10.0f, 1.0f, 10.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 25.0f);
-
-				for (int z = -1; z <= 1; z++)
+				for (int y = -1; y <= 1; y++)
 				{
-					for (int y = -1; y <= 1; y++)
+					for (int x = -1; x <= 1; x++)
 					{
-						for (int x = -1; x <= 1; x++)
+						float mult = 1.5f;
+						XMFLOAT4 col;
+						switch (z)
 						{
-							float mult = 1.5f;
-							XMFLOAT4 col;
-							switch (z)
-							{
-							case -1:
-								col = { 1.0f, 0.3f, 0.3f, m_redBoxAlpha };
-								break;
-							case 0:
-								col = { 0.3f, 1.0f, 0.3f, m_greenBoxAlpha };
-								break;
-							case 1:
-								col = { 0.3f, 0.3f, 1.0f, m_blueBoxAlpha };
-								break;
-							}
-
-							if ((col.w - EPSILONF) <= 0.0f) continue;
-
-							DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("white"), XMFLOAT3(x * mult, y * mult, z * mult), XMFLOAT3(0.0f, 0.0f, 0.0f), 
-								XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 25.0f);
+						case -1:
+							col = { 1.0f, 0.3f, 0.3f, m_redBoxAlpha };
+							break;
+						case 0:
+							col = { 0.3f, 1.0f, 0.3f, m_greenBoxAlpha };
+							break;
+						case 1:
+							col = { 0.3f, 0.3f, 1.0f, m_blueBoxAlpha };
+							break;
 						}
+
+						if ((col.w - EPSILONF) <= 0.0f) continue;
+
+						DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("white"), XMFLOAT3(x * mult, y * mult, z * mult), XMFLOAT3(0.0f, 0.0f, 0.0f),
+							XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 25.0f);
 					}
 				}
 			}
+
 		}
 
-
-		// render quad
+		// composite pass
 		{
-			m_resLib.Get<RenderTargetView>("main")->Bind(m_resLib.Get<DepthStencilView>("main").get());
-			m_resLib.Get<RenderTargetView>("main")->Clear(0.1f, 0.1f, 0.1f, 0.0f);
-			m_resLib.Get<DepthStencilView>("main")->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+			m_resLib.Get<DepthStencilState>("default_depth_func_always")->Bind(0xff);
+			m_resLib.Get<BlendState>("over")->Bind(nullptr, 0xff);
 
-			m_resLib.Get<DepthStencilState>("depth_disabled")->Bind(0xff);
+			// bind main 
+			mainRTV->Bind(mainDSV.get());
 
-			auto vs = m_resLib.Get<VertexShader>("screen");
-			auto ps = m_resLib.Get<PixelShader>("basic");
-
-			vs->Bind();
+			// bind composite shader
+			m_resLib.Get<VertexShader>("weighted_blended_composite")->Bind();
+			auto ps = m_resLib.Get<PixelShader>("weighted_blended_composite");
 			ps->Bind();
-			m_resLib.Get<InputLayout>("screen")->Bind();
+			m_resLib.Get<InputLayout>("weighted_blended_composite")->Bind();
 
-			auto vb = m_resLib.Get<Buffer>("screen.vb");
+			m_resLib.Get<ShaderResourceView>("weighted_blended_accumulation")->PSBind(ps->GetResBinding("accumulationMap"));
+			m_resLib.Get<ShaderResourceView>("weighted_blended_reveal")->PSBind(ps->GetResBinding("revealMap"));
+
+			// draw to quad
+			m_resLib.Get<Buffer>("screen.vb")->BindAsVB();
 			auto ib = m_resLib.Get<Buffer>("screen.ib");
-			vb->BindAsVB();
 			ib->BindAsIB(DXGI_FORMAT_R32_UINT);
-
-			// m_showDepthPeelLayer == m_numDepthPeelPass when user pick show All
-			if (m_showDepthPeelLayer == m_numDepthPeelPass)
-			{
-				for (int i = m_numDepthPeelPass - 1; i >= 0; i--)
-				{
-					m_resLib.Get<ShaderResourceView>("c_depth_peel" + std::to_string(i))->PSBind(ps->GetResBinding("tex"));
-					m_resLib.Get<SamplerState>("point_wrap")->PSBind(ps->GetResBinding("samplerState"));
-
-					XMFLOAT4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-					m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
-					m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->SetData(&color);
-
-					m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-					GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
-				}
-			}
-			else
-			{
-				m_resLib.Get<ShaderResourceView>("c_depth_peel" + std::to_string(m_showDepthPeelLayer))->PSBind(ps->GetResBinding("tex"));
-				m_resLib.Get<SamplerState>("point_wrap")->PSBind(ps->GetResBinding("samplerState"));
-
-				XMFLOAT4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-				m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
-				m_resLib.Get<Buffer>("basic.ps.EntityCBuf")->SetData(&color);
-
-				m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-				GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
-			}
+			m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 		}
 	}
 
@@ -223,13 +207,6 @@ namespace GA
 		ImGui::DragFloat("red boxes", &m_redBoxAlpha, 0.001f, 0.0f, 1.0f);
 		ImGui::DragFloat("green boxes", &m_greenBoxAlpha, 0.001f, 0.0f, 1.0f);
 		ImGui::DragFloat("blue boxes", &m_blueBoxAlpha, 0.001f, 0.0f, 1.0f);
-		ImGui::PopItemWidth();
-		ImGui::End();
-
-		ImGui::Begin("Depth Peel Layers");
-		ImGui::PushItemWidth(80.0f);
-		static const char* layers[] = { "1", "2", "3", "4", "5", "6", "All" };
-		ImGui::Combo("Show Layer", &m_showDepthPeelLayer, layers, IM_ARRAYSIZE(layers));
 		ImGui::PopItemWidth();
 		ImGui::End();
 
@@ -304,7 +281,7 @@ namespace GA
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
 
-		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
@@ -357,7 +334,7 @@ namespace GA
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
 
-		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
@@ -365,14 +342,12 @@ namespace GA
 	{
 		m_resLib.Add("light", VertexShader::Create(m_context.get(), "res/cso/light.vs.cso"));
 		m_resLib.Add("light", PixelShader::Create(m_context.get(), "res/cso/light.ps.cso"));
+		m_resLib.Add("weighted_blended", PixelShader::Create(m_context.get(), "res/cso/weighted_blended_oit.ps.cso"));
 		m_resLib.Add("light", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("light")));
 
-		m_resLib.Add("basic", VertexShader::Create(m_context.get(), "res/cso/basic.vs.cso"));
-		m_resLib.Add("basic", PixelShader::Create(m_context.get(), "res/cso/basic.ps.cso"));
-		m_resLib.Add("basic", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("basic")));
-
-		m_resLib.Add("screen", VertexShader::Create(m_context.get(), "res/cso/screen.vs.cso"));
-		m_resLib.Add("screen", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("screen")));
+		m_resLib.Add("weighted_blended_composite", VertexShader::Create(m_context.get(), "res/cso/weighted_blended_oit_composite.vs.cso"));
+		m_resLib.Add("weighted_blended_composite", PixelShader::Create(m_context.get(), "res/cso/weighted_blended_oit_composite.ps.cso"));
+		m_resLib.Add("weighted_blended_composite", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("weighted_blended_composite")));
 	}
 
 	void App::SetBuffers()
@@ -453,20 +428,6 @@ namespace GA
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = sizeof(uint32_t);
 			m_resLib.Add("screen.ib", Buffer::Create(m_context.get(), desc, ind));
-		}
-
-
-
-
-		{
-			D3D11_BUFFER_DESC desc = {};
-			desc.ByteWidth = sizeof(XMFLOAT4);
-			desc.Usage = D3D11_USAGE_DYNAMIC;
-			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-			desc.MiscFlags = 0;
-			desc.StructureByteStride = 0;
-			m_resLib.Add("basic.ps.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
 		}
 
 
@@ -642,8 +603,9 @@ namespace GA
 		m_context->SetSwapChain(desc);
 	}
 
-	void App::SetMainViews()
+	void App::SetViews()
 	{
+		// main rtv
 		{
 			if (m_resLib.Exist<RenderTargetView>("main"))
 				m_resLib.Remove<RenderTargetView>("main");
@@ -658,21 +620,22 @@ namespace GA
 			m_resLib.Add("main", RenderTargetView::Create(m_context.get(), desc, Texture2D::Create(m_context.get(), backbuffer.Get())));
 		}
 
+		// main dsv
 		{
 			if (m_resLib.Exist<DepthStencilView>("main"))
 				m_resLib.Remove<DepthStencilView>("main");
 
-			D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-			dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-			dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-			dsvDesc.Texture2D.MipSlice = 0;
+			D3D11_DEPTH_STENCIL_VIEW_DESC desc = {};
+			desc.Format = DXGI_FORMAT_D32_FLOAT;
+			desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+			desc.Texture2D.MipSlice = 0;
 
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = m_window->GetDesc().width;
 			texDesc.Height = m_window->GetDesc().height;
 			texDesc.ArraySize = 1;
 			texDesc.MipLevels = 1;
-			texDesc.Format = dsvDesc.Format;
+			texDesc.Format = desc.Format;
 			texDesc.SampleDesc.Count =  1;
 			texDesc.SampleDesc.Quality = 0;
 			texDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -680,35 +643,34 @@ namespace GA
 			texDesc.CPUAccessFlags = 0;
 			texDesc.MiscFlags = 0;
 
-			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
+			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), desc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
 		}
-	}
 
-	void App::SetDepthPeelRes()
-	{
-		for (int i = 0; i < m_numDepthPeelPass; i++)
+
+		// transparent mesh rtv
 		{
-			std::string id = "depth_peel" + std::to_string(i);
-
-			// rtv
+			if (m_resLib.Exist<RenderTargetViewArray>("weighted_blended"))
 			{
-				if (m_resLib.Exist<RenderTargetView>(id))
-				{
-					m_resLib.Remove<RenderTargetView>(id);
-					m_resLib.Remove<ShaderResourceView>("c_" + id);
-				}
+				m_resLib.Remove<RenderTargetViewArray>("weighted_blended");
+				m_resLib.Remove<ShaderResourceView>("weighted_blended_accumulation");
+				m_resLib.Remove<ShaderResourceView>("weighted_blended_reveal");
+			}
 
-				D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-				rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-				rtvDesc.Texture2D.MipSlice = 0;
+			auto rtvArr = std::make_shared<RenderTargetViewArray>();
+
+			// accumulation rtv
+			{
+				D3D11_RENDER_TARGET_VIEW_DESC desc = {};
+				desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+				desc.Texture2D.MipSlice = 0;
+				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 
 				D3D11_TEXTURE2D_DESC texDesc = {};
 				texDesc.Width = m_window->GetDesc().width;
 				texDesc.Height = m_window->GetDesc().height;
-				texDesc.MipLevels = 1;
 				texDesc.ArraySize = 1;
-				texDesc.Format = rtvDesc.Format;
+				texDesc.MipLevels = 1;
+				texDesc.Format = desc.Format;
 				texDesc.SampleDesc.Count = 1;
 				texDesc.SampleDesc.Quality = 0;
 				texDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -716,53 +678,53 @@ namespace GA
 				texDesc.CPUAccessFlags = 0;
 				texDesc.MiscFlags = 0;
 
-				m_resLib.Add(id, RenderTargetView::Create(m_context.get(), rtvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
-
 				D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-				srvDesc.Format = rtvDesc.Format;
+				srvDesc.Format = texDesc.Format;
 				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-				srvDesc.Texture2D.MostDetailedMip = 0;
 				srvDesc.Texture2D.MipLevels = 1;
+				srvDesc.Texture2D.MostDetailedMip = 0;
 
-				m_resLib.Add("c_" + id, ShaderResourceView::Create(m_context.get(), srvDesc, m_resLib.Get<RenderTargetView>(id)->GetTexture()));
+				auto tex = Texture2D::Create(m_context.get(), texDesc, (void*)nullptr);
+				auto rtv = RenderTargetView::Create(m_context.get(), desc, tex);
+				m_resLib.Add("weighted_blended_accumulation", ShaderResourceView::Create(m_context.get(), srvDesc, tex));
+
+				rtvArr->push_back(rtv);
 			}
 
-			// dsv
+			// reveal rtv
 			{
-				if (m_resLib.Exist<DepthStencilView>(id))
-				{
-					m_resLib.Remove<DepthStencilView>(id);
-					m_resLib.Remove<ShaderResourceView>("d_" + id);
-				}
-
-				D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-				dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-				dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-				dsvDesc.Texture2D.MipSlice = 0;
+				D3D11_RENDER_TARGET_VIEW_DESC desc = {};
+				desc.Format = DXGI_FORMAT_R8_UNORM;
+				desc.Texture2D.MipSlice = 0;
+				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 
 				D3D11_TEXTURE2D_DESC texDesc = {};
 				texDesc.Width = m_window->GetDesc().width;
 				texDesc.Height = m_window->GetDesc().height;
 				texDesc.ArraySize = 1;
 				texDesc.MipLevels = 1;
-				texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+				texDesc.Format = desc.Format;
 				texDesc.SampleDesc.Count = 1;
 				texDesc.SampleDesc.Quality = 0;
 				texDesc.Usage = D3D11_USAGE_DEFAULT;
-				texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+				texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 				texDesc.CPUAccessFlags = 0;
 				texDesc.MiscFlags = 0;
 
-				m_resLib.Add(id, DepthStencilView::Create(m_context.get(), dsvDesc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
-
 				D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-				srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+				srvDesc.Format = texDesc.Format;
 				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 				srvDesc.Texture2D.MipLevels = 1;
 				srvDesc.Texture2D.MostDetailedMip = 0;
 
-				m_resLib.Add("d_" + id, ShaderResourceView::Create(m_context.get(), srvDesc, m_resLib.Get<DepthStencilView>(id)->GetTexture2D()));
+				auto tex = Texture2D::Create(m_context.get(), texDesc, (void*)nullptr);
+				auto rtv = RenderTargetView::Create(m_context.get(), desc, tex);
+				m_resLib.Add("weighted_blended_reveal", ShaderResourceView::Create(m_context.get(), srvDesc, tex));
+
+				rtvArr->push_back(rtv);
 			}
+
+			m_resLib.Add("weighted_blended", rtvArr);
 		}
 	}
 
@@ -784,9 +746,18 @@ namespace GA
 			m_resLib.Add("no_cull", RasterizerState::Create(m_context.get(), desc));
 		}
 
+
+
 		{
-			if (m_resLib.Exist<BlendState>("blend"))
-				m_resLib.Remove<BlendState>("blend");
+			if (m_resLib.Exist<BlendState>("default"))
+				m_resLib.Remove<BlendState>("default");
+
+			m_resLib.Add("default", BlendState::Create(m_context.get(), CD3D11_BLEND_DESC(CD3D11_DEFAULT())));
+		}
+
+		{
+			if (m_resLib.Exist<BlendState>("over"))
+				m_resLib.Remove<BlendState>("over");
 
 			D3D11_BLEND_DESC desc = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
 			desc.AlphaToCoverageEnable = FALSE;
@@ -797,18 +768,43 @@ namespace GA
 			brt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
 			brt.BlendOp = D3D11_BLEND_OP_ADD;
 			brt.SrcBlendAlpha = D3D11_BLEND_ONE;
-			brt.DestBlendAlpha = D3D11_BLEND_ONE;
-			brt.BlendOpAlpha = D3D11_BLEND_OP_MAX;
+			brt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+			brt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
 			brt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-			m_resLib.Add("blend", BlendState::Create(m_context.get(), desc));
+			m_resLib.Add("over", BlendState::Create(m_context.get(), desc));
 		}
 
 		{
-			if (m_resLib.Exist<BlendState>("default"))
-				m_resLib.Remove<BlendState>("default");
+			if (m_resLib.Exist<BlendState>("weighted_blended"))
+				m_resLib.Remove<BlendState>("weighted_blended");
 
-			m_resLib.Add("default", BlendState::Create(m_context.get(), CD3D11_BLEND_DESC(CD3D11_DEFAULT())));
+			D3D11_BLEND_DESC desc = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
+			desc.AlphaToCoverageEnable = FALSE;
+			desc.IndependentBlendEnable = TRUE;
+
+			auto& brt0 = desc.RenderTarget[0];
+			brt0.BlendEnable = TRUE;
+			brt0.SrcBlend = D3D11_BLEND_ONE;
+			brt0.DestBlend = D3D11_BLEND_ONE;
+			brt0.BlendOp = D3D11_BLEND_OP_ADD;
+			brt0.SrcBlendAlpha = D3D11_BLEND_ONE;
+			brt0.DestBlendAlpha = D3D11_BLEND_ONE;
+			brt0.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+			brt0.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+			auto& brt1 = desc.RenderTarget[1];
+			brt1.BlendEnable = TRUE;
+			brt1.SrcBlend = D3D11_BLEND_ZERO;
+			brt1.DestBlend = D3D11_BLEND_INV_SRC_COLOR;
+			brt1.BlendOp = D3D11_BLEND_OP_ADD;
+			brt1.SrcBlendAlpha = D3D11_BLEND_ZERO;
+			brt1.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+			brt1.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+			brt1.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+			m_resLib.Add("weighted_blended", BlendState::Create(m_context.get(), desc));
 		}
+
 
 		{
 			if (m_resLib.Exist<DepthStencilState>("default"))
@@ -818,12 +814,21 @@ namespace GA
 		}
 
 		{
-			if (m_resLib.Exist<DepthStencilState>("depth_disabled"))
-				m_resLib.Remove<DepthStencilState>("depth_disabled");
+			if (m_resLib.Exist<DepthStencilState>("default_depth_func_always"))
+				m_resLib.Remove<DepthStencilState>("default_depth_func_always");
 
 			D3D11_DEPTH_STENCIL_DESC desc = CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT());
-			desc.DepthEnable = FALSE;
-			m_resLib.Add("depth_disabled", DepthStencilState::Create(m_context.get(), desc));
+			desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+			m_resLib.Add("default_depth_func_always", DepthStencilState::Create(m_context.get(), desc));
+		}
+
+		{
+			if (m_resLib.Exist<DepthStencilState>("default_depth_mask_zero"))
+				m_resLib.Remove<DepthStencilState>("default_depth_mask_zero");
+
+			D3D11_DEPTH_STENCIL_DESC desc = CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT());
+			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			m_resLib.Add("default_depth_mask_zero", DepthStencilState::Create(m_context.get(), desc));
 		}
 	}
 
@@ -848,8 +853,7 @@ namespace GA
 		HRESULT hr;
 		GDX11_CONTEXT_THROW_INFO(m_context->GetSwapChain()->ResizeBuffers(1, event.GetWidth(), event.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, 0));
 
-		SetMainViews();
-		SetDepthPeelRes();
+		SetViews();
 
 		return false;
 	}

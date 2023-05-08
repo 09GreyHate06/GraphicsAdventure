@@ -10,6 +10,15 @@ struct VSOutput
     float3 viewPos : VIEW_POS;
 };
 
+struct PSOutput
+{
+    // accumulation of pre-multiplied color values
+    float4 accumulation : SV_Target0;
+    
+    // pixel revealage
+    float reveal : SV_Target1;
+};
+
 struct Material
 {
     float4 color;
@@ -40,7 +49,7 @@ cbuffer EntityCBuf : register(b1)
 Texture2D textureMap : register(t0);
 SamplerState textureMapSampler : register(s0);
 
-float4 main(VSOutput input) : SV_Target
+PSOutput main(VSOutput input)
 {
     float3 normal = normalize(input.normal);
     
@@ -86,5 +95,19 @@ float4 main(VSOutput input) : SV_Target
         spotLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess) * att * intensity;
     }
     
-    return float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
+    float4 color = float4((dirLightPhong + pointLightPhong + spotLightPhong) * textureMapCol.rgb, textureMapCol.a);
+    
+    PSOutput pso;
+    // weight. the color-based factor
+    // avoids color pollution from the edges of wispy clouds. the z-based
+    // factor gives precedence to nearer surfaces
+    // 3000 because 2^16 = 3000 (our render target format is RGBA16)
+    float weight = clamp(pow(min(1.0f, color.a * 10.0f) + 0.01f, 3.0f) * 1e8f * pow(1.0f - input.position.z * 0.9f, 3.0f), 0.01f, 3000.0f);
+    // store pixel color accumulation
+    // BlendState(BLEND_ONE, BLEND_ONE)
+    pso.accumulation = float4(color.rgb * color.a, color.a) * weight;
+    // store pixel revealage threshold
+    // BlendState(BLEND_ZERO, BLEND_INV_SRC_COLOR)
+    pso.reveal = color.a;
+    return pso;
 }

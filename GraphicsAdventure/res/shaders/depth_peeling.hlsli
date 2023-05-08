@@ -15,5 +15,5 @@ void DepthPeel(int2 pixelScreenSpacePos, float curDepth)
     //float curDepth = pixelClipSpacePosition.z;
     
     float prevDepth = prevDepthMap.Load(int3(pixelScreenSpacePos, 0)).x;
-    clip(curDepth - prevDepth - 0.0001f);
+    clip(curDepth - prevDepth - 0.00001f);
 }
