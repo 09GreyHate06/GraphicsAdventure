@@ -15,7 +15,6 @@ IncludeDir = {}
 IncludeDir["GreyDX11"]  = "GraphicsAdventure/vendor/GreyDX11/GreyDX11"
 IncludeDir["ImGui"]     = "GraphicsAdventure/vendor/imgui"
 
-
 include "GraphicsAdventure/vendor/GreyDX11"
 include "GraphicsAdventure/vendor/imgui"
 
@@ -33,6 +32,7 @@ project "GraphicsAdventure"
     {
         "%{prj.name}/src/**.h",
         "%{prj.name}/src/**.cpp",
+        "%{prj.name}/res/shaders/**.hlsl",
     }
 
     includedirs
@@ -62,3 +62,15 @@ project "GraphicsAdventure"
         defines "GDX11_RELEASE"
         runtime "Release"
         optimize "on"
+
+    filter "files:**.hlsl"
+        shaderobjectfileoutput "res/cso/%{file.basename}.cso"
+        removeflags "ExcludeFromBuild"
+        shadermodel "4.0"
+        shaderentry "main"
+
+    filter "files:**.vs.hlsl"
+        shadertype "Vertex"
+
+    filter "files:**.ps.hlsl"
+        shadertype "Pixel"
