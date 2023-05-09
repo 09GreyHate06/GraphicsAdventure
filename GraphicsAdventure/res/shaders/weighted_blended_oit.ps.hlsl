@@ -1,3 +1,4 @@
+#include "macros.hlsli"
 #include "light_source.hlsli"
 #include "phong.hlsli"
 
@@ -19,17 +20,9 @@ struct PSOutput
     float reveal : SV_Target1;
 };
 
-struct Material
-{
-    float4 color;
-    float2 tiling;
-    float shininess;
-    float p0;
-};
-
 static const uint s_maxLights = 32;
 
-cbuffer SystemCBuf : register(b0)
+cbuffer SystemCBuf : REG_SYSTEMCBUF
 {
     DirectionalLight dirLights[s_maxLights];
     PointLight pointLights[s_maxLights];
@@ -41,9 +34,15 @@ cbuffer SystemCBuf : register(b0)
     uint p0;
 };
 
-cbuffer EntityCBuf : register(b1)
+cbuffer EntityCBuf : REG_ENTITYCBUF
 {
-    Material mat;
+    struct
+    {
+        float4 color;
+        float2 tiling;
+        float shininess;
+        float p0;
+    } mat;
 };
 
 Texture2D textureMap : register(t0);
@@ -75,7 +74,7 @@ PSOutput main(VSOutput input)
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
         float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
-        float att = Attenuation(light.attConstant, light.attLinear, light.attQuadratic, length(light.position - input.pixelWorldSpacePos));
+        float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         pointLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess) * att;
     }
     
@@ -86,7 +85,7 @@ PSOutput main(VSOutput input)
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
         float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
-        float att = Attenuation(light.attConstant, light.attLinear, light.attQuadratic, length(light.position - input.pixelWorldSpacePos));
+        float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         
         float cosTheta = dot(pixelToLight, normalize(-light.direction));
         float epsilon = light.innerCutOffCosAngle - light.outerCutOffCosAngle;

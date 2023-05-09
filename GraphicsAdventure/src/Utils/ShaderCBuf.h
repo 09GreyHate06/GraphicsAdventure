@@ -35,11 +35,6 @@ namespace GA::Utils
 			float ambientIntensity;
 			DirectX::XMFLOAT3 position;
 			float intensity;
-
-			float attConstant;
-			float attLinear;
-			float attQuadratic;
-			float p0;
 		} pointLights[s_maxLights];
 
 		struct SpotLight
@@ -50,12 +45,12 @@ namespace GA::Utils
 			float intensity;
 
 			DirectX::XMFLOAT3 position;
-			float attConstant;
-
-			float attLinear;
-			float attQuadratic;
 			float innerCutOffCosAngle;
+
 			float outerCutOffCosAngle;
+			float p0;
+			float p1;
+			float p2;
 
 		} spotLights[s_maxLights];
 

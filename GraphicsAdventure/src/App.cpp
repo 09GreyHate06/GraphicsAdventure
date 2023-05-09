@@ -97,18 +97,18 @@ namespace GA
 
 	void App::OnRender()
 	{
-		auto mainRTV = m_resLib.Get<RenderTargetView>("main");
+		auto opaqueRTV = m_resLib.Get<RenderTargetView>("opaque");
 		auto mainDSV = m_resLib.Get<DepthStencilView>("main");
+		mainDSV->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
-		// solid meshes
+		// opaque pass
 		{
-			m_resLib.Get<RasterizerState>("no_cull")->Bind();
+			m_resLib.Get<RasterizerState>("default")->Bind();
 			m_resLib.Get<BlendState>("default")->Bind(nullptr, 0xff);
 			m_resLib.Get<DepthStencilState>("default")->Bind(0xff);
 
-			mainRTV->Bind(mainDSV.get());
-			mainRTV->Clear(0.0f, 0.0f, 0.0f, 0.0f);
-			mainDSV->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+			opaqueRTV->Bind(mainDSV.get());
+			opaqueRTV->Clear(0.0f, 0.0f, 0.0f, 0.0f);
 
 			auto vs = m_resLib.Get<VertexShader>("light");
 			auto ps = m_resLib.Get<PixelShader>("light");
@@ -117,12 +117,13 @@ namespace GA
 			m_resLib.Get<InputLayout>("light")->Bind();
 
 			SetLight(ps);
-			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("brickwall"), XMFLOAT3(0.0f, 0.0f, 2.5f), XMFLOAT3(-90.0f, 0.0f, 0.0f), XMFLOAT3(10.0f, 1.0f, 10.0f),
-				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 32.0f);
+			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("wood"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
+				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(20.0f, 20.0f), 163.0f);
 		}
 
-		// transparent meshes
+		// transparent pass
 		{
+			m_resLib.Get<RasterizerState>("no_cull")->Bind();
 			m_resLib.Get<BlendState>("weighted_blended")->Bind(nullptr, 0xff);
 			m_resLib.Get<DepthStencilState>("default_depth_mask_zero")->Bind(0xff);
 
@@ -132,7 +133,6 @@ namespace GA
 			transparentRTVA->at(1)->Clear(1.0f, 1.0f, 1.0f, 1.0f); // reveal
 
 			// bind transparent shader
-
 			auto vs = m_resLib.Get<VertexShader>("light");
 			auto ps = m_resLib.Get<PixelShader>("weighted_blended");
 			vs->Bind();
@@ -152,20 +152,20 @@ namespace GA
 						switch (z)
 						{
 						case -1:
-							col = { 1.0f, 0.3f, 0.3f, m_redBoxAlpha };
+							col = { 1.0f, 1.0f, 0.0f, m_yellowBoxAlpha };
 							break;
 						case 0:
-							col = { 0.3f, 1.0f, 0.3f, m_greenBoxAlpha };
+							col = { 1.0f, 0.0f, 1.0f, m_magentaBoxAlpha };
 							break;
 						case 1:
-							col = { 0.3f, 0.3f, 1.0f, m_blueBoxAlpha };
+							col = { 0.0f, 1.0f, 1.0f, m_cyanBoxAlpha };
 							break;
 						}
 
 						if ((col.w - EPSILONF) <= 0.0f) continue;
 
 						DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("white"), XMFLOAT3(x * mult, y * mult, z * mult), XMFLOAT3(0.0f, 0.0f, 0.0f),
-							XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 25.0f);
+							XMFLOAT3(1.0f, 1.0f, 1.0f), col, XMFLOAT2(1.0f, 1.0f), 60.0f);
 					}
 				}
 			}
@@ -174,20 +174,51 @@ namespace GA
 
 		// composite pass
 		{
+			m_resLib.Get<RasterizerState>("default")->Bind();
 			m_resLib.Get<DepthStencilState>("default_depth_func_always")->Bind(0xff);
 			m_resLib.Get<BlendState>("over")->Bind(nullptr, 0xff);
 
-			// bind main 
-			mainRTV->Bind(mainDSV.get());
+			// bind opaque rtv and draw transparent obj on the top
+			opaqueRTV->Bind(mainDSV.get());
 
 			// bind composite shader
-			m_resLib.Get<VertexShader>("weighted_blended_composite")->Bind();
+			m_resLib.Get<VertexShader>("fullscreen_out_pos")->Bind();
 			auto ps = m_resLib.Get<PixelShader>("weighted_blended_composite");
 			ps->Bind();
-			m_resLib.Get<InputLayout>("weighted_blended_composite")->Bind();
+			m_resLib.Get<InputLayout>("fullscreen_out_pos")->Bind();
 
 			m_resLib.Get<ShaderResourceView>("weighted_blended_accumulation")->PSBind(ps->GetResBinding("accumulationMap"));
 			m_resLib.Get<ShaderResourceView>("weighted_blended_reveal")->PSBind(ps->GetResBinding("revealMap"));
+
+			// draw to quad
+			m_resLib.Get<Buffer>("screen.vb")->BindAsVB();
+			auto ib = m_resLib.Get<Buffer>("screen.ib");
+			ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+			m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+		}
+
+		// post process (gamma)
+		{
+			m_resLib.Get<RasterizerState>("default")->Bind();
+			m_resLib.Get<DepthStencilState>("default_depth_func_always")->Bind(0xff);
+			m_resLib.Get<BlendState>("default")->Bind(nullptr, 0xff);
+
+			m_resLib.Get<RenderTargetView>("main")->Bind(mainDSV.get());
+			m_resLib.Get<RenderTargetView>("main")->Clear(0.0f, 0.0f, 0.0f, 0.0f);
+
+			// bind gamma correction shader
+			m_resLib.Get<VertexShader>("fullscreen_out_tc_pos")->Bind();
+			auto ps = m_resLib.Get<PixelShader>("gamma_correction");
+			ps->Bind();
+			m_resLib.Get<InputLayout>("fullscreen_out_tc_pos")->Bind();
+
+			m_resLib.Get<ShaderResourceView>("opaque")->PSBind(ps->GetResBinding("tex"));
+			m_resLib.Get<SamplerState>("point_wrap")->PSBind(ps->GetResBinding("samplerState"));
+
+			XMFLOAT4 gamma = { m_gamma, 0.0f, 0.0f, 0.0f };
+			m_resLib.Get<Buffer>("float4")->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
+			m_resLib.Get<Buffer>("float4")->SetData(&gamma);
 
 			// draw to quad
 			m_resLib.Get<Buffer>("screen.vb")->BindAsVB();
@@ -202,11 +233,18 @@ namespace GA
 	{
 		m_imguiManager.Begin();
 
+
 		ImGui::Begin("Box apha");
 		ImGui::PushItemWidth(80.0f);
-		ImGui::DragFloat("red boxes", &m_redBoxAlpha, 0.001f, 0.0f, 1.0f);
-		ImGui::DragFloat("green boxes", &m_greenBoxAlpha, 0.001f, 0.0f, 1.0f);
-		ImGui::DragFloat("blue boxes", &m_blueBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::DragFloat("Yellow boxes", &m_yellowBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::DragFloat("Magenta boxes", &m_magentaBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::DragFloat("Cyan boxes", &m_cyanBoxAlpha, 0.001f, 0.0f, 1.0f);
+		ImGui::PopItemWidth();
+		ImGui::End();
+
+		ImGui::Begin("Gamma correction");
+		ImGui::PushItemWidth(80.0f);
+		ImGui::DragFloat("Gamma level", &m_gamma, 0.1f, 0.0f, 0.0f, "%.1f");
 		ImGui::PopItemWidth();
 		ImGui::End();
 
@@ -221,12 +259,33 @@ namespace GA
 		XMStoreFloat3(&direction, directionXM);
 
 		GA::Utils::LightPSSystemCBuf cbuf = {};
-		cbuf.dirLights[0].color = { 1.0f, 1.0f, 1.0f };
-		cbuf.dirLights[0].direction = direction;
-		cbuf.dirLights[0].ambientIntensity = 0.2f;
-		cbuf.dirLights[0].intensity = 1.0f;
+		//cbuf.dirLights[0].color = { 1.0f, 1.0f, 1.0f };
+		//cbuf.dirLights[0].direction = direction;
+		//cbuf.dirLights[0].ambientIntensity = 0.2f;
+		//cbuf.dirLights[0].intensity = 1.0f;
 
-		cbuf.activeDirLights = 1;
+		cbuf.pointLights[0].color = { 1.0f, 1.0f, 0.0f };
+		cbuf.pointLights[0].position = {-4.0f, -0.5f, 0.0f};
+		cbuf.pointLights[0].ambientIntensity = 0.4f;
+		cbuf.pointLights[0].intensity = 2.0f;
+
+		cbuf.pointLights[1].color = { 1.0f, 0.0f, 1.0f };
+		cbuf.pointLights[1].position = { 4.0f, -0.5f, 0.0f };
+		cbuf.pointLights[1].ambientIntensity = 0.4f;
+		cbuf.pointLights[1].intensity = 2.0f;
+
+		cbuf.pointLights[2].color = { 0.0f, 1.0f, 1.0f };
+		cbuf.pointLights[2].position = { 0.0f, -0.5f, -4.0f };
+		cbuf.pointLights[2].ambientIntensity = 0.4f;
+		cbuf.pointLights[2].intensity = 2.0f;
+
+		cbuf.pointLights[3].color = { 1.0f, 0.5f, 0.5f };
+		cbuf.pointLights[3].position = { 0.0f, -0.5f, 4.0f };
+		cbuf.pointLights[3].ambientIntensity = 0.4f;
+		cbuf.pointLights[3].intensity = 2.0f;
+
+		//cbuf.activeDirLights = 1;
+		cbuf.activePointLights = 4;
 
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
@@ -345,9 +404,13 @@ namespace GA
 		m_resLib.Add("weighted_blended", PixelShader::Create(m_context.get(), "res/cso/weighted_blended_oit.ps.cso"));
 		m_resLib.Add("light", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("light")));
 
-		m_resLib.Add("weighted_blended_composite", VertexShader::Create(m_context.get(), "res/cso/weighted_blended_oit_composite.vs.cso"));
+		m_resLib.Add("fullscreen_out_pos", VertexShader::Create(m_context.get(), "res/cso/fullscreen_out_pos.vs.cso"));
 		m_resLib.Add("weighted_blended_composite", PixelShader::Create(m_context.get(), "res/cso/weighted_blended_oit_composite.ps.cso"));
-		m_resLib.Add("weighted_blended_composite", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("weighted_blended_composite")));
+		m_resLib.Add("fullscreen_out_pos", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("fullscreen_out_pos")));
+
+		m_resLib.Add("fullscreen_out_tc_pos", VertexShader::Create(m_context.get(), "res/cso/fullscreen_out_tc_pos.vs.cso"));
+		m_resLib.Add("gamma_correction", PixelShader::Create(m_context.get(), "res/cso/gamma_correction.ps.cso"));
+		m_resLib.Add("fullscreen_out_tc_pos", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("fullscreen_out_tc_pos")));
 	}
 
 	void App::SetBuffers()
@@ -476,6 +539,17 @@ namespace GA
 			desc.StructureByteStride = 0;
 			m_resLib.Add("light.ps.EntityCBuf", Buffer::Create(m_context.get(), desc, nullptr));
 		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add("float4", Buffer::Create(m_context.get(), desc, nullptr));
+		}
 	}
 
 	void App::SetTextures()
@@ -510,13 +584,13 @@ namespace GA
 		}
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/brickwall.jpg", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/wood.png", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
 			texDesc.MipLevels = 0;
 			texDesc.ArraySize = 1;
-			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 			texDesc.SampleDesc.Count = 1;
 			texDesc.SampleDesc.Quality = 0;
 			texDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -530,31 +604,7 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("brickwall", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
-		}
-
-		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/transparent_window.png", false, 4);
-			D3D11_TEXTURE2D_DESC texDesc = {};
-			texDesc.Width = image.width;
-			texDesc.Height = image.height;
-			texDesc.MipLevels = 0;
-			texDesc.ArraySize = 1;
-			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			texDesc.SampleDesc.Count = 1;
-			texDesc.SampleDesc.Quality = 0;
-			texDesc.Usage = D3D11_USAGE_DEFAULT;
-			texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-			texDesc.CPUAccessFlags = 0;
-			texDesc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
-
-			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Format = texDesc.Format;
-			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.MipLevels = -1;
-
-			m_resLib.Add("transparent_window", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("wood", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 		}
 
 		{
@@ -646,6 +696,39 @@ namespace GA
 			m_resLib.Add("main", DepthStencilView::Create(m_context.get(), desc, Texture2D::Create(m_context.get(), texDesc, (void*)nullptr)));
 		}
 
+		// opaque mesh rtv
+		{
+			if (m_resLib.Exist<RenderTargetView>("opaque"))
+				m_resLib.Remove<RenderTargetViewArray>("opaque");
+
+			D3D11_RENDER_TARGET_VIEW_DESC desc = {};
+			desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+			desc.Texture2D.MipSlice = 0;
+			desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = m_window->GetDesc().width;
+			texDesc.Height = m_window->GetDesc().height;
+			texDesc.ArraySize = 1;
+			texDesc.MipLevels = 1;
+			texDesc.Format = desc.Format;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = 0;
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = texDesc.Format;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MipLevels = 1;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+
+			auto tex = Texture2D::Create(m_context.get(), texDesc, (void*)nullptr);
+			m_resLib.Add("opaque", RenderTargetView::Create(m_context.get(), desc, tex));
+			m_resLib.Add("opaque", ShaderResourceView::Create(m_context.get(), srvDesc, tex));
+		}
 
 		// transparent mesh rtv
 		{

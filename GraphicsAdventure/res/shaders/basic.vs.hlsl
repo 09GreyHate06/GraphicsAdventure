@@ -1,3 +1,4 @@
+#include "macros.hlsli"
 
 struct VSOutput
 {
@@ -5,12 +6,12 @@ struct VSOutput
     float4 position : SV_Position;
 };
 
-cbuffer SystemCBuf : register(b0)
+cbuffer SystemCBuf : REG_SYSTEMCBUF
 {
     float4x4 viewProjection;
 };
 
-cbuffer EntityCBuf : register(b1)
+cbuffer EntityCBuf : REG_ENTITYCBUF
 {
     float4x4 transform;
 };

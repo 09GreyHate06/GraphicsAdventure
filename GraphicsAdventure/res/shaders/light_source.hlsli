@@ -12,11 +12,6 @@ struct PointLight
     float ambientIntensity;
     float3 position;
     float intensity;
-    
-    float attConstant;
-    float attLinear;
-    float attQuadratic;
-    float p0;
 };
 
 struct SpotLight
@@ -27,10 +22,10 @@ struct SpotLight
     float intensity;
     
     float3 position;
-    float attConstant;
-    
-    float attLinear;
-    float attQuadratic;
     float innerCutOffCosAngle;
+    
     float outerCutOffCosAngle;
+    float p0;
+    float p1;
+    float p2;
 };

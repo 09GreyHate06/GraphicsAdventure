@@ -1,3 +1,4 @@
+#include "macros.hlsli"
 
 float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 normal, float ambientIntensity, float lightIntensity, float matShininess)
 {
@@ -18,7 +19,15 @@ float3 Phong(float3 lightCol, float3 pixelToLight, float3 pixelToView, float3 no
     return ambient + diffuse + specular;
 }
 
-float Attenuation(float c, float l, float q, float d)
+// good without gamma correction
+//float Attenuation(float c, float l, float q, float d)
+//{
+//    return 1.0f / (c + l * d + q * d * d);
+//}
+
+// good with gamma correction
+float Attenuation(float distance)
 {
-    return 1.0f / (c + l * d + q * d * d);
+    float d = max(distance, EPSILON);
+    return 1.0f / (d * d);
 }

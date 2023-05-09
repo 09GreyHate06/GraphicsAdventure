@@ -1,3 +1,5 @@
+#include "macros.hlsli"
+
 struct VSInput
 {
     float3 position : POSITION;
@@ -14,14 +16,14 @@ struct VSOutput
     float3 viewPos : VIEW_POS;
 };
 
-cbuffer SystemCBuf
+cbuffer SystemCBuf : REG_SYSTEMCBUF
 {
     float4x4 viewProjection;
     float3 viewPos; // camera pos
     float p0;
 };
 
-cbuffer EntityCBuf
+cbuffer EntityCBuf : REG_ENTITYCBUF
 {
     float4x4 transform;
     float4x4 normalMatrix;

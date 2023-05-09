@@ -1,5 +1,6 @@
+#include "macros.hlsli"
 
-cbuffer EntityCBuf
+cbuffer EntityCBuf : REG_ENTITYCBUF
 {
     float4 color;
 };

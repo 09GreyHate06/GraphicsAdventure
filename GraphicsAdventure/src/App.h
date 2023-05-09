@@ -51,8 +51,10 @@ namespace GA
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
 
-		float m_redBoxAlpha = 0.5f;
-		float m_greenBoxAlpha = 0.5f;
-		float m_blueBoxAlpha = 0.5f;
+		float m_magentaBoxAlpha = 0.5f;
+		float m_yellowBoxAlpha = 0.5f;
+		float m_cyanBoxAlpha = 0.5f;
+
+		float m_gamma = 2.2f;
 	};
 }

@@ -1,8 +1,7 @@
+#include "macros.hlsli"
 
 Texture2D accumulationMap : register(t0);
 Texture2D revealMap : register(t1);
-
-#define EPSILON 0.0001
 
 // get the max value between three values
 float Max3(float3 v)
