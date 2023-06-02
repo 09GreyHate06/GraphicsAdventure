@@ -118,7 +118,7 @@ namespace GA
 
 			SetLight(ps);
 			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("wood"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
-				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(20.0f, 20.0f), 163.0f);
+				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), 163.0f);
 		}
 
 		// transparent pass
