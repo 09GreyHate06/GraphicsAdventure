@@ -174,6 +174,23 @@ namespace GA::Utils
 		return vertices;
 	}
 
+	std::array<float, 24> CreateCubeVerticesCompact(float min, float max)
+	{
+		return std::array<float, 24>{
+			// front plane
+			min, max, min,
+			max, max, min,
+			max, min, min,
+			min, min, min,
+
+			// back plane
+			max, max, max,
+			min, max, max,
+			min, min, max,
+			max, min, max
+		};
+	}
+
 	std::vector<float> CreatePlaneVertices(bool hasTexCoords, bool hasNormals)
 	{
 		std::vector<float> vertices;
@@ -250,6 +267,35 @@ namespace GA::Utils
 			20, 21, 22,
 			22, 23, 20
 		});
+	}
+
+	std::array<uint32_t, 36> CreateCubeIndicesCompact()
+	{
+		return std::array<uint32_t, 36>{
+			// front
+			0, 1, 2,
+			2, 3, 0,
+
+			// back
+			4, 5, 6,
+			6, 7, 4,
+
+			// right
+			1, 4, 7,
+			7, 2, 1,
+
+			// left
+			5, 0, 3,
+			3, 6, 5,
+
+			// top
+			5, 4, 1,
+			1, 0, 5,
+
+			// bottom
+			3, 2, 7,
+			7, 6, 3
+		};
 	}
 
 	std::array<uint32_t, 6> CreatePlaneIndices()

@@ -44,17 +44,7 @@ float4 main(VSOutput input) : SV_Target
 {
     float3 normal = normalize(input.normal);
     
-    // temp: trick shader that we need textureMapCol1 to compare values
-    float4 textureMapCol1 = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
-    float4 textureMapCol = BilinearWrap(textureMap, input.texCoord * mat.tiling) * mat.color;
-    
-    if (textureMapCol1.x == -1.0f ||
-        textureMapCol1.y == -1.0f ||
-        textureMapCol1.z == -1.0f ||
-        textureMapCol1.w == -1.0f)
-    {
-        textureMapCol = 0.0f;
-    }
+    float4 textureMapCol = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
     
     float3 dirLightPhong = float3(0.0f, 0.0f, 0.0f);
     float3 pointLightPhong = float3(0.0f, 0.0f, 0.0f);

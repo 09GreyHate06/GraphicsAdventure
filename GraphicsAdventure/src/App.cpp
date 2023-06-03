@@ -118,7 +118,35 @@ namespace GA
 
 			SetLight(ps);
 			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("wood"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
-				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), 163.0f);
+				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 163.0f);
+
+
+
+			// sky box
+			m_resLib.Get<DepthStencilState>("skybox")->Bind(0xff);
+			m_resLib.Get<RasterizerState>("no_cull")->Bind();
+
+			vs = m_resLib.Get<VertexShader>("skybox");
+			ps = m_resLib.Get<PixelShader>("skybox");
+			vs->Bind();
+			ps->Bind();
+			m_resLib.Get<InputLayout>("skybox")->Bind();
+
+			m_resLib.Get<Buffer>("float4x4")->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+			XMFLOAT4X4 viewProj; 
+			XMStoreFloat4x4(&viewProj, XMMatrixTranspose(m_camera.GetViewMatrix() * m_camera.GetProjectionMatrix()));
+			m_resLib.Get<Buffer>("float4x4")->SetData(&viewProj);
+
+			m_resLib.Get<SamplerState>("linear_clamp")->PSBind(ps->GetResBinding("sam"));
+			m_resLib.Get<ShaderResourceView>("skybox")->PSBind(ps->GetResBinding("tex"));
+
+			m_resLib.Get<Buffer>("cube_basic.vb")->BindAsVB();
+			auto cbIb = m_resLib.Get<Buffer>("cube_basic.ib");
+			cbIb->BindAsIB(DXGI_FORMAT_R32_UINT);
+
+			m_context->GetDeviceContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(cbIb->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+
 		}
 
 		// transparent pass
@@ -411,6 +439,10 @@ namespace GA
 		m_resLib.Add("fullscreen_out_tc_pos", VertexShader::Create(m_context.get(), "res/cso/fullscreen_out_tc_pos.vs.cso"));
 		m_resLib.Add("gamma_correction", PixelShader::Create(m_context.get(), "res/cso/gamma_correction.ps.cso"));
 		m_resLib.Add("fullscreen_out_tc_pos", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("fullscreen_out_tc_pos")));
+
+		m_resLib.Add("skybox", VertexShader::Create(m_context.get(), "res/cso/skybox.vs.cso"));
+		m_resLib.Add("skybox", PixelShader::Create(m_context.get(), "res/cso/skybox.ps.cso"));
+		m_resLib.Add("skybox", InputLayout::Create(m_context.get(), m_resLib.Get<VertexShader>("skybox")));
 	}
 
 	void App::SetBuffers()
@@ -493,7 +525,29 @@ namespace GA
 			m_resLib.Add("screen.ib", Buffer::Create(m_context.get(), desc, ind));
 		}
 
+		// cube map
+		{
+			auto vert = GA::Utils::CreateCubeVerticesCompact(-1.0f, 1.0f);
+			auto ind = GA::Utils::CreateCubeIndicesCompact();
 
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = (uint32_t)vert.size() * sizeof(float);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 3 * sizeof(float);
+			m_resLib.Add("cube_basic.vb", Buffer::Create(m_context.get(), desc, vert.data()));
+
+			desc = {};
+			desc.ByteWidth = (uint32_t)ind.size() * sizeof(uint32_t);
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = sizeof(uint32_t);
+			m_resLib.Add("cube_basic.ib", Buffer::Create(m_context.get(), desc, ind.data()));
+		}
 
 
 		{
@@ -550,12 +604,24 @@ namespace GA
 			desc.StructureByteStride = 0;
 			m_resLib.Add("float4", Buffer::Create(m_context.get(), desc, nullptr));
 		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add("float4x4", Buffer::Create(m_context.get(), desc, nullptr));
+		}
 	}
 
 	void App::SetTextures()
 	{
 		{
 			D3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+
 			desc.Filter = D3D11_FILTER_ANISOTROPIC;
 			desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
 			desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -584,6 +650,19 @@ namespace GA
 		}
 
 		{
+			D3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+			desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+			desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+			desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+			for (int i = 0; i < 4; i++)
+				desc.BorderColor[i] = 0.0f;
+			desc.MinLOD = 0.0f;
+			desc.MaxLOD = D3D11_FLOAT32_MAX;
+			m_resLib.Add("linear_clamp", SamplerState::Create(m_context.get(), desc));
+		}
+
+		{
 			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/wood.png", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
@@ -605,6 +684,7 @@ namespace GA
 			srvDesc.Texture2D.MipLevels = -1;
 
 			m_resLib.Add("wood", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			GDX11::Utils::FreeImageData(&image);
 		}
 
 		{
@@ -629,6 +709,45 @@ namespace GA
 
 			uint32_t col = 0xffffffff;
 			m_resLib.Add("white", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, &col)));
+		}
+
+
+		{
+			GDX11::Utils::ImageData images[6];
+			for (int i = 0; i < 6; i++)
+				images[i] = GDX11::Utils::LoadImageFile("res/textures/skybox/" + std::to_string(i) + ".jpg", false, 4);
+
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = images[0].width;
+			texDesc.Height = images[0].height;
+			texDesc.MipLevels = 1;
+			texDesc.ArraySize = 6;
+			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+			D3D11_SUBRESOURCE_DATA data[6];
+			for (int i = 0; i < 6; i++)
+			{
+				data[i].pSysMem = images[i].pixels;
+				data[i].SysMemPitch = 4 * images[i].width;
+				data[i].SysMemSlicePitch = 0;
+			}
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = texDesc.Format;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = 1;
+
+			m_resLib.Add("skybox", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, data)));
+
+			for (int i = 0; i < 6; i++)
+				GDX11::Utils::FreeImageData(&images[i]);
 		}
 	}
 
@@ -912,6 +1031,16 @@ namespace GA
 			D3D11_DEPTH_STENCIL_DESC desc = CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT());
 			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
 			m_resLib.Add("default_depth_mask_zero", DepthStencilState::Create(m_context.get(), desc));
+		}
+
+		{
+			if (m_resLib.Exist<DepthStencilState>("skybox"))
+				m_resLib.Remove<DepthStencilState>("skybox");
+
+			D3D11_DEPTH_STENCIL_DESC desc = CD3D11_DEPTH_STENCIL_DESC(CD3D11_DEFAULT());
+			desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			m_resLib.Add("skybox", DepthStencilState::Create(m_context.get(), desc));
 		}
 	}
 
