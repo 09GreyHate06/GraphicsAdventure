@@ -2,11 +2,14 @@
 #include "light_source.hlsli"
 #include "phong.hlsli"
 #include "texturing_manual_filter.hlsli"
+#include "bump_mapping.hlsli"
 
 struct VSOutput
 {
     float4 position : SV_Position;
-    float2 texCoord : TEXCOORD;
+    float2 uv : TEXCOORD;
+    float3 tangent : TANGENT;
+    float3 bitangent : BITANGENT;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
@@ -33,18 +36,32 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
         float4 color;
         float2 tiling;
         float shininess;
-        float p0;
+        bool enableNormalMap;
+        bool enableDepthMap;
     } mat;
 };
 
-Texture2D textureMap : register(t0);
-SamplerState textureMapSampler : register(s0);
+Texture2D diffuseMap : register(t0);
+Texture2D normalMap : register(t1);
+SamplerState mapSampler : register(s0);
 
 float4 main(VSOutput input) : SV_Target
 {
+    float3 tangent = normalize(input.tangent);
+    float3 bitangent = normalize(input.bitangent);
     float3 normal = normalize(input.normal);
+    float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
+    float2 uv = input.uv * mat.tiling;
     
-    float4 textureMapCol = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
+    if (mat.enableNormalMap)
+    {
+        normal = NormalMapOrthogonalized(normalMap.Sample(mapSampler, uv).xyz, tangent, normal);
+        //normal = NormalMap(normalMap.Sample(mapSampler, uv).xyz, tangent, bitangent, normal);
+    }
+    
+    float4 textureMapCol = diffuseMap.Sample(mapSampler, uv) * mat.color;
+    
+    clip(textureMapCol.a - EPSILON);
     
     float3 dirLightPhong = float3(0.0f, 0.0f, 0.0f);
     float3 pointLightPhong = float3(0.0f, 0.0f, 0.0f);
@@ -55,7 +72,6 @@ float4 main(VSOutput input) : SV_Target
         DirectionalLight light = dirLights[i];
         
         float3 pixelToLight = normalize(-light.direction);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         dirLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess);
     }
     
@@ -64,7 +80,6 @@ float4 main(VSOutput input) : SV_Target
         PointLight light = pointLights[i];
         
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
         float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         pointLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess) * att;
@@ -75,7 +90,6 @@ float4 main(VSOutput input) : SV_Target
         SpotLight light = spotLights[i];
         
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
         float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         

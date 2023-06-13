@@ -3,14 +3,18 @@
 struct VSInput
 {
     float3 position : POSITION;
-    float2 texCoord : TEXCOORD;
+    float2 uv : TEXCOORD;
+    float3 tangent : TANGENT;
+    float3 bitangent : BITANGENT;
     float3 normal : NORMAL;
 };
 
 struct VSOutput
 {
     float4 position : SV_Position;
-    float2 texCoord : TEXCOORD;
+    float2 uv : TEXCOORD;
+    float3 tangent : TANGENT;
+    float3 bitangent : BITANGENT;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
@@ -31,11 +35,15 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
 
 VSOutput main(VSInput input)
 {
-    VSOutput vso;
+    float3x3 wsTransform = (float3x3)transform;
     float4 pixelWorldSpacePos = mul(float4(input.position, 1.0f), transform);
+    
+    VSOutput vso;
     vso.position = mul(pixelWorldSpacePos, viewProjection);
-    vso.texCoord = input.texCoord;
-    vso.normal = mul(input.normal, (float3x3) normalMatrix);
+    vso.uv = input.uv;
+    vso.tangent = mul(input.tangent, wsTransform);
+    vso.bitangent = mul(input.bitangent, wsTransform);
+    vso.normal = mul(input.normal, (float3x3)normalMatrix);
     vso.pixelWorldSpacePos = pixelWorldSpacePos.xyz;
     vso.viewPos = viewPos;
     

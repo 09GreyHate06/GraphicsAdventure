@@ -68,7 +68,7 @@ namespace GA::Utils
 			DirectX::XMFLOAT4 color;
 			DirectX::XMFLOAT2 tiling;
 			float shininess;
-			float p0;
+			BOOL enableNormalMap;
 		} mat;
 	};
 }

@@ -34,12 +34,12 @@ float4 BilinearWrap(Texture2D tex, float2 texCoord)
     return lerp(topTexelLerp, botTexelLerp, fractionalPart.y);
 }
 
-float Smoothstep(float2 x)
+float2 Smoothstep(float2 x)
 {
     return (x * x) * (3.0f - 2.0f * x);
 }
 
-float Quintic(float2 x)
+float2 Quintic(float2 x)
 {
     return (x * x * x) * ((6 * x * x) - 15.0f * x + 10.0f);
 }

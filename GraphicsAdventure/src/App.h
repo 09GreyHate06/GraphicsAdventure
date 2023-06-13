@@ -25,10 +25,12 @@ namespace GA
 		void OnImGuiRender();
 
 		void SetLight(const std::shared_ptr<GDX11::PixelShader>& ps);
-		void DrawPlane(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& tex, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
+		void DrawPlane(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& diffuse, 
+			const std::shared_ptr<GDX11::ShaderResourceView>& normal, const std::shared_ptr<GDX11::SamplerState>& sam, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
 			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
 
-		void DrawCube(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& tex, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
+		void DrawCube(const std::shared_ptr<GDX11::VertexShader>& vs, const std::shared_ptr<GDX11::PixelShader>& ps, const std::shared_ptr<GDX11::ShaderResourceView>& diffuse, 
+			const std::shared_ptr<GDX11::ShaderResourceView>& normal, const std::shared_ptr<GDX11::SamplerState>& sam, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
 			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
 
 		void SetShaders();
@@ -51,10 +53,9 @@ namespace GA
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
 
-		float m_magentaBoxAlpha = 0.5f;
-		float m_yellowBoxAlpha = 0.5f;
-		float m_cyanBoxAlpha = 0.5f;
-
 		float m_gamma = 2.2f;
+
+		// temp
+		DirectX::XMFLOAT3 m_lightDir = {50.0f, 30.0f, 0.0f};
 	};
 }
