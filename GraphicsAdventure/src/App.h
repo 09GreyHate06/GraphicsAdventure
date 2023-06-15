@@ -57,6 +57,6 @@ namespace GA
 
 		// temp
 		DirectX::XMFLOAT3 m_lightDir = {50.0f, 30.0f, 0.0f};
-		float m_heightMapScale = 0.1f;
+		float m_heightMapScale = 0.3f;
 	};
 }

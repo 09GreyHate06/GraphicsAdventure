@@ -32,3 +32,31 @@ float2 ParallaxMap(float sampledHeight, float heightScale, float2 uv, float3 pix
     float2 p = pixelToViewTS.xy * (sampledHeight * heightScale) / pixelToViewTS.z;
     return uv - p;
 }
+
+float2 SteepParallaxMap(Texture2D<float> heightMap, SamplerState sam, float heightScale, float2 uv, float3 pixelToViewTS)
+{
+    const float minLayers = 8.0f;
+    const float maxLayers = 32.0f;
+
+    // larger layer if viewing from steep angle    
+    float numLayers = lerp(maxLayers, minLayers, max(dot(float3(0.0f, 0.0f, 1.0f), pixelToViewTS), 0.0f));
+    
+    float layerHeight = 1.0f / numLayers;
+    float curLayerHeight = 0.0f;
+    
+    float2 p = pixelToViewTS.xy * heightScale;
+    float2 deltaUV = p / numLayers;
+    
+    float2 curUV = uv;
+    float curHeightMapValue = heightMap.Sample(sam, curUV);
+
+    [unroll(32)]
+    while (curHeightMapValue > curLayerHeight)
+    {
+        curUV -= deltaUV;
+        curHeightMapValue = heightMap.Sample(sam, curUV);
+        curLayerHeight += layerHeight;
+    }
+    
+    return curUV;
+}

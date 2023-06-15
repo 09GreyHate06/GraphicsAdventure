@@ -61,7 +61,7 @@ float4 main(VSOutput input) : SV_Target
     {
         float3x3 tbn = TBNOrthogonalized(tangent, normal);
         if(mat.enableHeightMap)
-            uv = ParallaxMap(heightMap.Sample(mapSampler, uv), mat.heightMapScale, uv, mul(pixelToView, transpose(tbn)));
+            uv = SteepParallaxMap(heightMap, mapSampler, mat.heightMapScale, uv, mul(pixelToView, transpose(tbn)));
         
         if (uv.x > mat.tiling.x || uv.y > mat.tiling.y || uv.x < 0.0 || uv.y < 0.0)
             clip(-1);

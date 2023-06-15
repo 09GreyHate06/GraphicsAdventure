@@ -115,12 +115,12 @@ namespace GA
 			m_resLib.Get<InputLayout>("light")->Bind();
 
 			SetLight();
-			DrawPlane(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bricks2_normal"), m_resLib.Get<ShaderResourceView>("bricks2_height"), m_heightMapScale, 
+			DrawPlane(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_height"), m_heightMapScale, 
 				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 163.0f);
 
 
-			DrawCube(m_resLib.Get<ShaderResourceView>("bricks2"), m_resLib.Get<ShaderResourceView>("bricks2_normal"), m_resLib.Get<ShaderResourceView>("bricks2_height"), m_heightMapScale, 
+			DrawCube(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_height"), m_heightMapScale, 
 				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, 0.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(5.0f, 5.0f, 5.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), 32.0f);
 
@@ -663,31 +663,6 @@ namespace GA
 		}
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2.jpg", false, 4);
-			D3D11_TEXTURE2D_DESC texDesc = {};
-			texDesc.Width = image.width;
-			texDesc.Height = image.height;
-			texDesc.MipLevels = 0;
-			texDesc.ArraySize = 1;
-			texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-			texDesc.SampleDesc.Count = 1;
-			texDesc.SampleDesc.Quality = 0;
-			texDesc.Usage = D3D11_USAGE_DEFAULT;
-			texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-			texDesc.CPUAccessFlags = 0;
-			texDesc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
-
-			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Format = texDesc.Format;
-			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.MipLevels = -1;
-
-			m_resLib.Add("bricks2", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
-			GDX11::Utils::FreeImageData(&image);
-		}
-
-		{
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = 1;
 			texDesc.Height = 1;
@@ -752,7 +727,7 @@ namespace GA
 
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2_normal.jpg", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_normal.png", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -772,13 +747,13 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("bricks2_normal", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bump_normal", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2_disp.jpg", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_height.png", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -798,7 +773,7 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("bricks2_height", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bump_height", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 	}
