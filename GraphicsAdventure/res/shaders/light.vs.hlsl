@@ -35,14 +35,13 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
 
 VSOutput main(VSInput input)
 {
-    float3x3 wsTransform = (float3x3)transform;
     float4 pixelWorldSpacePos = mul(float4(input.position, 1.0f), transform);
     
     VSOutput vso;
     vso.position = mul(pixelWorldSpacePos, viewProjection);
     vso.uv = input.uv;
-    vso.tangent = mul(input.tangent, wsTransform);
-    vso.bitangent = mul(input.bitangent, wsTransform);
+    vso.tangent = mul(input.tangent, (float3x3)normalMatrix);
+    vso.bitangent = mul(input.bitangent, (float3x3)normalMatrix);
     vso.normal = mul(input.normal, (float3x3)normalMatrix);
     vso.pixelWorldSpacePos = pixelWorldSpacePos.xyz;
     vso.viewPos = viewPos;

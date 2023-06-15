@@ -114,12 +114,14 @@ namespace GA
 			ps->Bind();
 			m_resLib.Get<InputLayout>("light")->Bind();
 
-			SetLight(ps);
-			DrawPlane(vs, ps, m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
+			SetLight();
+			DrawPlane(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bricks2_normal"), m_resLib.Get<ShaderResourceView>("bricks2_height"), m_heightMapScale, 
+				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 163.0f);
 
 
-			DrawCube(vs, ps, m_resLib.Get<ShaderResourceView>("marble"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, 0.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(5.0f, 5.0f, 5.0f),
+			DrawCube(m_resLib.Get<ShaderResourceView>("bricks2"), m_resLib.Get<ShaderResourceView>("bricks2_normal"), m_resLib.Get<ShaderResourceView>("bricks2_height"), m_heightMapScale, 
+				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, 0.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(5.0f, 5.0f, 5.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), 32.0f);
 
 
@@ -196,11 +198,19 @@ namespace GA
 		ImGui::DragFloat3("Direction", &m_lightDir.x, 0.1f);
 		ImGui::End();
 
+		ImGui::Begin("Parallax Mapping");
+		ImGui::PushItemWidth(80.0f);
+		ImGui::DragFloat("Height Scale", &m_heightMapScale, 0.001f);
+		ImGui::PopItemWidth();
+		ImGui::End();
+
 		m_imguiManager.End();
 	}
 
-	void App::SetLight(const std::shared_ptr<GDX11::PixelShader>& ps)
+	void App::SetLight()
 	{
+		auto ps = m_resLib.Get<PixelShader>("light");
+
 		XMVECTOR rotQuatXM = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(m_lightDir.x), XMConvertToRadians(m_lightDir.y), XMConvertToRadians(m_lightDir.z));
 		XMVECTOR directionXM = XMVector3Rotate(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), rotQuatXM);
 		XMFLOAT3 direction;
@@ -239,21 +249,29 @@ namespace GA
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
 	}
 
-	void App::DrawPlane(const std::shared_ptr<VertexShader>& vs, const std::shared_ptr<PixelShader>& ps, const std::shared_ptr<ShaderResourceView>& diffuse, const std::shared_ptr<GDX11::ShaderResourceView>& normal, const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
+	void App::DrawPlane(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& heightMap, float heightMapScale,
+		const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
 		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
+		auto vs = m_resLib.Get<VertexShader>("light");
+		auto ps = m_resLib.Get<PixelShader>("light");
+		vs->Bind();
+		ps->Bind();
+
 		auto vb = m_resLib.Get<Buffer>("plane.vb");
 		auto ib = m_resLib.Get<Buffer>("plane.ib");
 		vb->BindAsVB();
 		ib->BindAsIB(DXGI_FORMAT_R32_UINT);
 
 
-		diffuse->PSBind(ps->GetResBinding("diffuseMap"));
+		diffuseMap->PSBind(ps->GetResBinding("diffuseMap"));
 		sam->PSBind(ps->GetResBinding("mapSampler"));
 
-		if (normal)
+		if (normalMap)
 		{
-			normal->PSBind(ps->GetResBinding("normalMap"));
+			normalMap->PSBind(ps->GetResBinding("normalMap"));
+			if (heightMap)
+				heightMap->PSBind(ps->GetResBinding("heightMap"));
 		}
 
 		// bind cbuf
@@ -289,7 +307,9 @@ namespace GA
 			cbuf.mat.color = col;
 			cbuf.mat.tiling = tiling;
 			cbuf.mat.shininess = shininess;
-			cbuf.mat.enableNormalMap = normal ? TRUE : FALSE;
+			cbuf.mat.enableNormalMap = normalMap ? TRUE : FALSE;
+			cbuf.mat.enableHeightMap = normalMap && heightMap ? TRUE : FALSE;
+			cbuf.mat.heightMapScale = heightMapScale;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
@@ -298,21 +318,29 @@ namespace GA
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
-	void App::DrawCube(const std::shared_ptr<VertexShader>& vs, const std::shared_ptr<PixelShader>& ps, const std::shared_ptr<ShaderResourceView>& diffuse, const std::shared_ptr<GDX11::ShaderResourceView>& normal, const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
+	void App::DrawCube(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& heightMap, float heightMapScale,
+		const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
 		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
+		auto vs = m_resLib.Get<VertexShader>("light");
+		auto ps = m_resLib.Get<PixelShader>("light");
+		vs->Bind();
+		ps->Bind();
+
 		auto vb = m_resLib.Get<Buffer>("cube.vb");
 		auto ib = m_resLib.Get<Buffer>("cube.ib");
 		vb->BindAsVB();
 		ib->BindAsIB(DXGI_FORMAT_R32_UINT);
 
 
-		diffuse->PSBind(ps->GetResBinding("diffuseMap"));
+		diffuseMap->PSBind(ps->GetResBinding("diffuseMap"));
 		sam->PSBind(ps->GetResBinding("mapSampler"));
 
-		if (normal)
+		if (normalMap)
 		{
-			normal->PSBind(ps->GetResBinding("normalMap"));
+			normalMap->PSBind(ps->GetResBinding("normalMap"));
+			if (heightMap)
+				heightMap->PSBind(ps->GetResBinding("heightMap"));
 		}
 
 		// bind cbuf
@@ -348,7 +376,9 @@ namespace GA
 			cbuf.mat.color = col;
 			cbuf.mat.tiling = tiling;
 			cbuf.mat.shininess = shininess;
-			cbuf.mat.enableNormalMap = normal ? TRUE : FALSE;
+			cbuf.mat.enableNormalMap = normalMap ? TRUE : FALSE;
+			cbuf.mat.enableHeightMap = normalMap && heightMap ? TRUE : FALSE;
+			cbuf.mat.heightMapScale = heightMapScale;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
@@ -633,7 +663,7 @@ namespace GA
 		}
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/groundMarble.png", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2.jpg", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -653,7 +683,7 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("marble", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bricks2", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 
@@ -722,7 +752,7 @@ namespace GA
 
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_normal.png", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2_normal.jpg", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -742,13 +772,13 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("bump_normal", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bricks2_normal", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_depth.png", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bricks2_disp.jpg", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -768,7 +798,7 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("bump_depth", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bricks2_height", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 	}

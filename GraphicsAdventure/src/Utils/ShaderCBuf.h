@@ -69,6 +69,10 @@ namespace GA::Utils
 			DirectX::XMFLOAT2 tiling;
 			float shininess;
 			BOOL enableNormalMap;
+			BOOL enableHeightMap;
+			float heightMapScale;
+			int p0;
+			int p1;
 		} mat;
 	};
 }
