@@ -8,7 +8,7 @@ float3x3 TBNOrthogonalized(float3 tangent, float3 normal)
     return float3x3(t, b, normal);
 }
 
-float3 NormalMap(float3 sampledNormal, float3 tangent, float3 bitangent, float3 normal)
+float3 NormalMapping(float3 sampledNormal, float3 tangent, float3 bitangent, float3 normal)
 {
     float3x3 tbn = float3x3(tangent, bitangent, normal);
     float3 normal_;
@@ -18,7 +18,7 @@ float3 NormalMap(float3 sampledNormal, float3 tangent, float3 bitangent, float3 
     return normal_;
 }
 
-float3 NormalMap(float3 sampledNormal, float3x3 tbn)
+float3 NormalMapping(float3 sampledNormal, float3x3 tbn)
 {
     float3 normal_;
     normal_ = sampledNormal * 2.0f - 1.0f;
@@ -27,13 +27,13 @@ float3 NormalMap(float3 sampledNormal, float3x3 tbn)
     return normal_;
 }
 
-float2 ParallaxMap(float sampledHeight, float heightScale, float2 uv, float3 pixelToViewTS)
+float2 ParallaxMapping(float sampledDepth, float heightScale, float2 uv, float3 pixelToViewTS)
 {
-    float2 p = pixelToViewTS.xy * (sampledHeight * heightScale) / pixelToViewTS.z;
+    float2 p = pixelToViewTS.xy * (sampledDepth * heightScale) / pixelToViewTS.z;
     return uv - p;
 }
 
-float2 SteepParallaxMap(Texture2D<float> heightMap, SamplerState sam, float heightScale, float2 uv, float3 pixelToViewTS)
+float2 SteepParallaxMapping(Texture2D<float> depthMap, SamplerState sam, float depthScale, float2 uv, float3 pixelToViewTS)
 {
     const float minLayers = 8.0f;
     const float maxLayers = 32.0f;
@@ -41,22 +41,58 @@ float2 SteepParallaxMap(Texture2D<float> heightMap, SamplerState sam, float heig
     // larger layer if viewing from steep angle    
     float numLayers = lerp(maxLayers, minLayers, max(dot(float3(0.0f, 0.0f, 1.0f), pixelToViewTS), 0.0f));
     
-    float layerHeight = 1.0f / numLayers;
-    float curLayerHeight = 0.0f;
+    float layerDepth = 1.0f / numLayers;
+    float curLayerDepth = 0.0f;
     
-    float2 p = pixelToViewTS.xy * heightScale;
-    float2 deltaUV = p / numLayers;
+    float2 p = pixelToViewTS.xy * depthScale;
+    float2 deltaUV = p / (pixelToViewTS.z * numLayers);
     
     float2 curUV = uv;
-    float curHeightMapValue = heightMap.Sample(sam, curUV);
+    float curDepthMapValue = depthMap.Sample(sam, curUV);
 
     [unroll(32)]
-    while (curHeightMapValue > curLayerHeight)
+    while (curDepthMapValue > curLayerDepth)
     {
         curUV -= deltaUV;
-        curHeightMapValue = heightMap.Sample(sam, curUV);
-        curLayerHeight += layerHeight;
+        curDepthMapValue = depthMap.Sample(sam, curUV);
+        curLayerDepth += layerDepth;
     }
     
     return curUV;
+}
+
+float2 ParallaxOcclusionMapping(Texture2D<float> depthMap, SamplerState sam, float depthScale, float2 uv, float3 pixelToViewTS)
+{
+    const float minLayers = 8.0f;
+    const float maxLayers = 32.0f;
+
+    // larger layer if viewing from steep angle    
+    float numLayers = lerp(maxLayers, minLayers, max(dot(float3(0.0f, 0.0f, 1.0f), pixelToViewTS), 0.0f));
+    
+    float layerDepth = 1.0f / numLayers;
+    float curLayerDepth = 0.0f;
+    
+    float2 p = pixelToViewTS.xy * depthScale;
+    float2 deltaUV = p / (pixelToViewTS.z * numLayers);;
+    
+    float2 curUV = uv;
+    float curDepthMapValue = depthMap.Sample(sam, curUV);
+
+    [unroll(32)]
+    while (curDepthMapValue > curLayerDepth)
+    {
+        curUV -= deltaUV;
+        curDepthMapValue = depthMap.Sample(sam, curUV);
+        curLayerDepth += layerDepth;
+    }
+    
+    float2 prevUV = curUV + deltaUV;
+    
+    float afterHeight = curLayerDepth - curDepthMapValue;
+    float beforeHeight = curLayerDepth - layerDepth - depthMap.Sample(sam, prevUV);
+    
+    float weight = afterHeight / (afterHeight - beforeHeight);
+    float2 finalUV = lerp(curUV, prevUV, weight);
+     
+    return finalUV;
 }

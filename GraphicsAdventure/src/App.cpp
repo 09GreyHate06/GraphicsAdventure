@@ -115,12 +115,12 @@ namespace GA
 			m_resLib.Get<InputLayout>("light")->Bind();
 
 			SetLight();
-			DrawPlane(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_height"), m_heightMapScale, 
+			DrawPlane(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_depth"), m_depthMapScale, 
 				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, -2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(20.0f, 1.0f, 20.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(10.0f, 10.0f), 163.0f);
 
 
-			DrawCube(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_height"), m_heightMapScale, 
+			DrawCube(m_resLib.Get<ShaderResourceView>("wood"), m_resLib.Get<ShaderResourceView>("bump_normal"), m_resLib.Get<ShaderResourceView>("bump_depth"), m_depthMapScale,
 				m_resLib.Get<SamplerState>("anisotropic_wrap"), XMFLOAT3(0.0f, 0.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(5.0f, 5.0f, 5.0f),
 				XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), 32.0f);
 
@@ -200,7 +200,7 @@ namespace GA
 
 		ImGui::Begin("Parallax Mapping");
 		ImGui::PushItemWidth(80.0f);
-		ImGui::DragFloat("Height Scale", &m_heightMapScale, 0.001f);
+		ImGui::DragFloat("Height Scale", &m_depthMapScale, 0.001f);
 		ImGui::PopItemWidth();
 		ImGui::End();
 
@@ -249,7 +249,7 @@ namespace GA
 		m_resLib.Get<Buffer>("light.ps.SystemCBuf")->SetData(&cbuf);
 	}
 
-	void App::DrawPlane(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& heightMap, float heightMapScale,
+	void App::DrawPlane(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& depthMap, float depthMapScale,
 		const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
 		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
@@ -270,8 +270,8 @@ namespace GA
 		if (normalMap)
 		{
 			normalMap->PSBind(ps->GetResBinding("normalMap"));
-			if (heightMap)
-				heightMap->PSBind(ps->GetResBinding("heightMap"));
+			if (depthMap)
+				depthMap->PSBind(ps->GetResBinding("depthMap"));
 		}
 
 		// bind cbuf
@@ -307,9 +307,9 @@ namespace GA
 			cbuf.mat.color = col;
 			cbuf.mat.tiling = tiling;
 			cbuf.mat.shininess = shininess;
-			cbuf.mat.enableNormalMap = normalMap ? TRUE : FALSE;
-			cbuf.mat.enableHeightMap = normalMap && heightMap ? TRUE : FALSE;
-			cbuf.mat.heightMapScale = heightMapScale;
+			cbuf.mat.enableNormalMapping = normalMap ? TRUE : FALSE;
+			cbuf.mat.enableParallaxMapping = normalMap && depthMap ? TRUE : FALSE;
+			cbuf.mat.depthMapScale = depthMapScale;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
@@ -318,7 +318,7 @@ namespace GA
 		GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
 	}
 
-	void App::DrawCube(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& heightMap, float heightMapScale,
+	void App::DrawCube(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& depthMap, float depthMapScale,
 		const std::shared_ptr<GDX11::SamplerState>& sam, const XMFLOAT3& pos, const XMFLOAT3& rot, const XMFLOAT3& scale,
 		const XMFLOAT4& col, const XMFLOAT2& tiling, float shininess)
 	{
@@ -339,8 +339,8 @@ namespace GA
 		if (normalMap)
 		{
 			normalMap->PSBind(ps->GetResBinding("normalMap"));
-			if (heightMap)
-				heightMap->PSBind(ps->GetResBinding("heightMap"));
+			if (depthMap)
+				depthMap->PSBind(ps->GetResBinding("depthMap"));
 		}
 
 		// bind cbuf
@@ -376,9 +376,9 @@ namespace GA
 			cbuf.mat.color = col;
 			cbuf.mat.tiling = tiling;
 			cbuf.mat.shininess = shininess;
-			cbuf.mat.enableNormalMap = normalMap ? TRUE : FALSE;
-			cbuf.mat.enableHeightMap = normalMap && heightMap ? TRUE : FALSE;
-			cbuf.mat.heightMapScale = heightMapScale;
+			cbuf.mat.enableNormalMapping = normalMap ? TRUE : FALSE;
+			cbuf.mat.enableParallaxMapping = normalMap && depthMap ? TRUE : FALSE;
+			cbuf.mat.depthMapScale = depthMapScale;
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
 			m_resLib.Get<Buffer>("light.ps.EntityCBuf")->SetData(&cbuf);
 		}
@@ -753,7 +753,7 @@ namespace GA
 
 
 		{
-			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_height.png", false, 4);
+			GDX11::Utils::ImageData image = GDX11::Utils::LoadImageFile("res/textures/bump_depth.png", false, 4);
 			D3D11_TEXTURE2D_DESC texDesc = {};
 			texDesc.Width = image.width;
 			texDesc.Height = image.height;
@@ -773,7 +773,7 @@ namespace GA
 			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.Texture2D.MipLevels = -1;
 
-			m_resLib.Add("bump_height", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
+			m_resLib.Add("bump_depth", ShaderResourceView::Create(m_context.get(), srvDesc, Texture2D::Create(m_context.get(), texDesc, image.pixels)));
 			GDX11::Utils::FreeImageData(&image);
 		}
 	}

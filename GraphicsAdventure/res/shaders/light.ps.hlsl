@@ -36,9 +36,9 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
         float4 color;
         float2 tiling;
         float shininess;
-        bool enableNormalMap;
-        bool enableHeightMap;
-        float heightMapScale;
+        bool enableNormalMapping;
+        bool enableParallaxMapping;
+        float depthMapScale;
         int p0;
         int p1;
     } mat;
@@ -46,7 +46,7 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
 
 Texture2D<float4> diffuseMap : register(t0);
 Texture2D<float3> normalMap : register(t1);
-Texture2D<float> heightMap : register(t2);
+Texture2D<float> depthMap : register(t2);
 SamplerState mapSampler : register(s0);
 
 float4 main(VSOutput input) : SV_Target
@@ -57,16 +57,16 @@ float4 main(VSOutput input) : SV_Target
     float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
     float2 uv = input.uv * mat.tiling;
     
-    if (mat.enableNormalMap)
+    if (mat.enableNormalMapping)
     {
         float3x3 tbn = TBNOrthogonalized(tangent, normal);
-        if(mat.enableHeightMap)
-            uv = SteepParallaxMap(heightMap, mapSampler, mat.heightMapScale, uv, mul(pixelToView, transpose(tbn)));
+        if(mat.enableParallaxMapping)
+            uv = ParallaxOcclusionMapping(depthMap, mapSampler, mat.depthMapScale, uv, mul(pixelToView, transpose(tbn)));
         
         if (uv.x > mat.tiling.x || uv.y > mat.tiling.y || uv.x < 0.0 || uv.y < 0.0)
             clip(-1);
         
-        normal = NormalMap(normalMap.Sample(mapSampler, uv), tbn);
+        normal = NormalMapping(normalMap.Sample(mapSampler, uv), tbn);
         //normal = NormalMap(normalMap.Sample(mapSampler, uv).xyz, tangent, bitangent, normal);
     }
     
