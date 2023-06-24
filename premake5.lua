@@ -14,6 +14,7 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 IncludeDir = {}
 IncludeDir["GreyDX11"]  = "GraphicsAdventure/vendor/GreyDX11/GreyDX11"
 IncludeDir["ImGui"]     = "GraphicsAdventure/vendor/imgui"
+IncludeDir["entt"]      = "GraphicsAdventure/vendor/entt/include"
 
 include "GraphicsAdventure/vendor/GreyDX11"
 include "GraphicsAdventure/vendor/imgui"
@@ -38,6 +39,7 @@ project "GraphicsAdventure"
     includedirs
     {
         "%{prj.name}/src",
+        "%{IncludeDir.entt}",
         "%{IncludeDir.GreyDX11}/src",
         "%{IncludeDir.GreyDX11}/vendor/stb_image",
         "%{IncludeDir.ImGui}",

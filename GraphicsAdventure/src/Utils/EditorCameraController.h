@@ -1,7 +1,7 @@
 #pragma once
 #include <GDX11.h>
 #include <DirectXMath.h>
-#include "Rendering/Camera.h"
+#include "Scene/Camera.h"
 
 namespace GA::Utils
 {

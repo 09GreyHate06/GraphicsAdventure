@@ -1,11 +1,15 @@
 #include "macros.hlsli"
 #include "light_source.hlsli"
 #include "phong.hlsli"
+#include "texturing_manual_filter.hlsli"
+#include "bump_mapping.hlsli"
 
 struct VSOutput
 {
     float4 position : SV_Position;
-    float2 texCoord : TEXCOORD;
+    float2 uv : TEXCOORD;
+    float3 tangent : TANGENT;
+    float3 bitangent : BITANGENT;
     float3 normal : NORMAL;
     float3 pixelWorldSpacePos : PIXEL_WORLD_SPACE_POS;
     float3 viewPos : VIEW_POS;
@@ -41,18 +45,43 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
         float4 color;
         float2 tiling;
         float shininess;
-        float p0;
+        bool enableNormalMapping;
+        bool enableParallaxMapping;
+        float depthMapScale;
+        int p0;
+        int p1;
     } mat;
 };
 
-Texture2D textureMap : register(t0);
-SamplerState textureMapSampler : register(s0);
+Texture2D<float4> diffuseMap : register(t0);
+Texture2D<float3> normalMap : register(t1);
+Texture2D<float> depthMap : register(t2);
+SamplerState samplerState : register(s0);
 
-PSOutput main(VSOutput input)
+PSOutput main(VSOutput input) 
 {
+    float3 tangent = normalize(input.tangent);
+    float3 bitangent = normalize(input.bitangent);
     float3 normal = normalize(input.normal);
+    float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
+    float2 uv = input.uv * mat.tiling;
     
-    float4 textureMapCol = textureMap.Sample(textureMapSampler, input.texCoord * mat.tiling) * mat.color;
+    if (mat.enableNormalMapping)
+    {
+        float3x3 tbn = TBNOrthogonalized(tangent, normal);
+        if (mat.enableParallaxMapping)
+            uv = ParallaxOcclusionMapping(depthMap, samplerState, mat.depthMapScale, uv, mul(pixelToView, transpose(tbn)));
+        
+        if (uv.x > mat.tiling.x || uv.y > mat.tiling.y || uv.x < 0.0 || uv.y < 0.0)
+            clip(-1);
+        
+        normal = NormalMapping(normalMap.Sample(samplerState, uv), tbn);
+        //normal = NormalMap(normalMap.Sample(mapSampler, uv).xyz, tangent, bitangent, normal);
+    }
+    
+    float4 textureMapCol = diffuseMap.Sample(samplerState, uv) * mat.color;
+    
+    clip(textureMapCol.a - EPSILON);
     
     float3 dirLightPhong = float3(0.0f, 0.0f, 0.0f);
     float3 pointLightPhong = float3(0.0f, 0.0f, 0.0f);
@@ -63,7 +92,6 @@ PSOutput main(VSOutput input)
         DirectionalLight light = dirLights[i];
         
         float3 pixelToLight = normalize(-light.direction);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         dirLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess);
     }
     
@@ -72,7 +100,6 @@ PSOutput main(VSOutput input)
         PointLight light = pointLights[i];
         
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
         float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         pointLightPhong += Phong(light.color, pixelToLight, pixelToView, normal, light.ambientIntensity, light.intensity, mat.shininess) * att;
@@ -83,7 +110,6 @@ PSOutput main(VSOutput input)
         SpotLight light = spotLights[i];
         
         float3 pixelToLight = normalize(light.position - input.pixelWorldSpacePos);
-        float3 pixelToView = normalize(input.viewPos - input.pixelWorldSpacePos);
         
         float att = Attenuation(length(light.position - input.pixelWorldSpacePos));
         

@@ -128,5 +128,11 @@ namespace GA::Utils
 
 	};
 
+	class StaticResourceLibrary
+	{
+	public:
+		inline static ResourceLibrary lib;
+	};
+
 #undef LEAF_ELEMENTS
 }

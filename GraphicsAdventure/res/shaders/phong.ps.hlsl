@@ -47,7 +47,7 @@ cbuffer EntityCBuf : REG_ENTITYCBUF
 Texture2D<float4> diffuseMap : register(t0);
 Texture2D<float3> normalMap : register(t1);
 Texture2D<float> depthMap : register(t2);
-SamplerState mapSampler : register(s0);
+SamplerState samplerState : register(s0);
 
 float4 main(VSOutput input) : SV_Target
 {
@@ -61,16 +61,16 @@ float4 main(VSOutput input) : SV_Target
     {
         float3x3 tbn = TBNOrthogonalized(tangent, normal);
         if(mat.enableParallaxMapping)
-            uv = ParallaxOcclusionMapping(depthMap, mapSampler, mat.depthMapScale, uv, mul(pixelToView, transpose(tbn)));
+            uv = ParallaxOcclusionMapping(depthMap, samplerState, mat.depthMapScale, uv, mul(pixelToView, transpose(tbn)));
         
         if (uv.x > mat.tiling.x || uv.y > mat.tiling.y || uv.x < 0.0 || uv.y < 0.0)
             clip(-1);
         
-        normal = NormalMapping(normalMap.Sample(mapSampler, uv), tbn);
+        normal = NormalMapping(normalMap.Sample(samplerState, uv), tbn);
         //normal = NormalMap(normalMap.Sample(mapSampler, uv).xyz, tangent, bitangent, normal);
     }
     
-    float4 textureMapCol = diffuseMap.Sample(mapSampler, uv) * mat.color;
+    float4 textureMapCol = diffuseMap.Sample(samplerState, uv) * mat.color;
     
     clip(textureMapCol.a - EPSILON);
     

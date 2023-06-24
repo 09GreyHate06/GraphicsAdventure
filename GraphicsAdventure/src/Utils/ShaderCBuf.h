@@ -6,20 +6,20 @@ namespace GA::Utils
 	// light.ps.hlsl max lights
 	static constexpr uint32_t s_maxLights = 32;
 
-	struct LightVSSystemCBuf
+	struct PhongVSSystemCBuf
 	{
 		DirectX::XMFLOAT4X4 viewProjection;
 		DirectX::XMFLOAT3 viewPos;
 		float p0;
 	};
 
-	struct LightVSEntityCBuf
+	struct PhongVSEntityCBuf
 	{
 		DirectX::XMFLOAT4X4 transform;
 		DirectX::XMFLOAT4X4 normalMatrix;
 	};
 
-	struct LightPSSystemCBuf
+	struct PhongPSSystemCBuf
 	{
 		struct DirectionalLight
 		{
@@ -61,7 +61,7 @@ namespace GA::Utils
 		uint32_t p0;
 	};
 
-	struct LightPSEntityCBuf
+	struct PhongPSEntityCBuf
 	{
 		struct Material
 		{

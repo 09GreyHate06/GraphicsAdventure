@@ -4,9 +4,11 @@
 #include <GDX11.h>
 #include "ImGui/ImGuiManager.h"
 #include "Utils/ResourceLibrary.h"
-#include "Rendering/Camera.h"
+#include "Scene/Camera.h"
 #include "Utils/EditorCameraController.h"
 #include "Core/Time.h"
+#include "Scene/Scene.h"
+#include "RenderGraph/LambertianRenderGraph.h"
 
 namespace GA
 {
@@ -24,22 +26,9 @@ namespace GA
 		void OnRender();
 		void OnImGuiRender();
 
-		void SetLight();
-		void DrawPlane(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& depthMap, float depthMapScale,
-			const std::shared_ptr<GDX11::SamplerState>& sam, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
-			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
-
-		void DrawCube(const std::shared_ptr<GDX11::ShaderResourceView>& diffuseMap, const std::shared_ptr<GDX11::ShaderResourceView>& normalMap, const std::shared_ptr<GDX11::ShaderResourceView>& depthMap, float depthMapScale,
-			const std::shared_ptr<GDX11::SamplerState>& sam, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale,
-			const DirectX::XMFLOAT4& col, const DirectX::XMFLOAT2& tiling, float shininess);
-
-		void SetShaders();
 		void SetBuffers();
 		void SetTextures();
-
 		void SetSwapChain();
-		void SetViews();
-		void SetStates();
 
 		bool OnWindowResizedEvent(GDX11::WindowResizeEvent& event);
 
@@ -53,10 +42,7 @@ namespace GA
 		Camera m_camera;
 		GA::Utils::EditorCameraController m_camController;
 
-		float m_gamma = 2.2f;
-
-		// temp
-		DirectX::XMFLOAT3 m_lightDir = {50.0f, 30.0f, 0.0f};
-		float m_depthMapScale = 0.1f;
+		std::unique_ptr<Scene> m_scene;
+		std::unique_ptr<LambertianRenderGraph> m_lambertianRenderGraph;
 	};
 }
