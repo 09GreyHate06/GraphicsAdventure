@@ -68,7 +68,7 @@ project "GraphicsAdventure"
     filter "files:**.hlsl"
         shaderobjectfileoutput "res/cso/%{file.basename}.cso"
         removeflags "ExcludeFromBuild"
-        shadermodel "4.0"
+        shadermodel "5.0"
         shaderentry "main"
 
     filter "files:**.vs.hlsl"
@@ -76,3 +76,6 @@ project "GraphicsAdventure"
 
     filter "files:**.ps.hlsl"
         shadertype "Pixel"
+
+    filter "files:**.gs.hlsl"
+        shadertype "Geometry"

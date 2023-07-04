@@ -3,8 +3,8 @@
 
 namespace GA::Utils
 {
-	// light.ps.hlsl max lights
-	static constexpr uint32_t s_maxLights = 32;
+	// phong.ps.hlsl max lights
+	static constexpr uint32_t s_maxLights = 5;
 
 	struct PhongVSSystemCBuf
 	{
@@ -27,6 +27,8 @@ namespace GA::Utils
 			float ambientIntensity;
 			DirectX::XMFLOAT3 direction;
 			float intensity;
+
+			DirectX::XMFLOAT4X4 lightSpace;
 		} dirLights[s_maxLights];
 
 		struct PointLight
@@ -35,6 +37,13 @@ namespace GA::Utils
 			float ambientIntensity;
 			DirectX::XMFLOAT3 position;
 			float intensity;
+
+			float nearZ;
+			float farZ;
+			float p0;
+			float p1;
+
+			DirectX::XMFLOAT4X4 lightSpace;
 		} pointLights[s_maxLights];
 
 		struct SpotLight
@@ -52,6 +61,7 @@ namespace GA::Utils
 			float p1;
 			float p2;
 
+			DirectX::XMFLOAT4X4 lightSpace;
 		} spotLights[s_maxLights];
 
 
@@ -74,5 +84,10 @@ namespace GA::Utils
 			int p0;
 			int p1;
 		} mat;
+
+		BOOL receiveShadows;
+		float p2;
+		float p3;
+		float p4;
 	};
 }

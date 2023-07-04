@@ -14,6 +14,7 @@ namespace GA
 		void ResizeViews(uint32_t width, uint32_t height);
 
 	private:
+		void ShadowPass();
 		void SolidPhongPass(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/);
 		void SkyboxPass(const DirectX::XMFLOAT4X4& viewProj /*column major*/);
 		void TransparentPhongPass(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/);
@@ -25,6 +26,7 @@ namespace GA
 		void SetShaders();
 		void SetStates();
 		void SetBuffers();
+		void SetLightDepthBuffers();
 
 		GDX11::GDX11Context* m_context;
 		GA::Utils::ResourceLibrary m_resLib;
@@ -34,5 +36,8 @@ namespace GA
 		entt::observer m_pointLights;
 		entt::observer m_spotLights;
 		entt::observer m_skybox;
+
+		uint32_t m_windowWidth;
+		uint32_t m_windowHeight;
 	};
 }

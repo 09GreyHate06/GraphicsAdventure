@@ -4,6 +4,8 @@ struct DirectionalLight
     float ambientIntensity;
     float3 direction;
     float intensity;
+    
+    float4x4 lightSpace;
 };
 
 struct PointLight
@@ -12,6 +14,13 @@ struct PointLight
     float ambientIntensity;
     float3 position;
     float intensity;
+    
+    float nearZ;
+    float farZ;
+    float p0;
+    float p1;
+    
+    float4x4 lightSpace;
 };
 
 struct SpotLight
@@ -28,4 +37,6 @@ struct SpotLight
     float p0;
     float p1;
     float p2;
+    
+    float4x4 lightSpace;
 };

@@ -44,5 +44,8 @@ namespace GA
 
 		std::unique_ptr<Scene> m_scene;
 		std::unique_ptr<LambertianRenderGraph> m_lambertianRenderGraph;
+
+		// temp
+		DirectX::XMFLOAT3* pointLightPos;
 	};
 }

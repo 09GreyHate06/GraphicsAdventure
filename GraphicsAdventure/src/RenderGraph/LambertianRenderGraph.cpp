@@ -9,6 +9,8 @@ using namespace DirectX;
 using namespace GDX11;
 using namespace Microsoft::WRL;
 
+#define GAMMA 2.2f
+
 // ------------ keys -------------
 
 #define RTV_MAIN                            "main"
@@ -24,26 +26,36 @@ using namespace Microsoft::WRL;
 #define VS_SKYBOX                           "skybox"
 #define VS_FS_OUT_TC_POS                    "fullscreen_out_tc_pos"
 #define VS_FS_OUT_POS                       "fullscreen_out_pos"
+#define VS_BASIC                            "basic"
+#define VS_CUBE_SHADOW_MAP                  "cube_shadow_map"
 								            
 #define PS_PHONG                            "phong"
 #define PS_PHONG_OIT                        "phong_oit"
 #define PS_SKYBOX                           "skybox"
 #define PS_PHONG_OIT_COMPOSITE              "phong_oit_composite"
 #define PS_GAMMA_CORRECTION                 "gamma_correction"
+#define PS_NULLPTR                          "null"
 								            
+#define GS_CUBE_SHADOW_MAP                  "cube_shadow_map"
+#define GS_NULLPTR                          "null"
+
 #define IL_PHONG                            "phong"
 #define IL_SKYBOX                           "skybox"
 #define IL_FS_OUT_TC_POS                    "fullscreen_out_tc_pos"
 #define IL_FS_OUT_POS                       "fullscreen_out_pos"
+#define IL_BASIC                            "basic"
+#define IL_CUBE_SHADOW_MAP                  "cube_shadow_map"
 
 #define S_DEFAULT                           "default"
 
 #define RS_CULL_NONE                        "cull_none"
+#define RS_DEPTH_SLOPE_SCALED_BIAS          "depth_slope_scaled_bias"
 #define BS_OVER_OP                          "over_op"
 #define BS_WEIGHTED_BLENDED_OIT_OP          "weighted_blended_oit_op"
 #define DSS_DEPTH_WRITE_ZERO                "depth_write_zero"
 #define DSS_DEPTH_WRITE_ZERO_OP_LESS_EQUAL  "depth_write_zero_op_less_equal"
 #define SS_POINT_CLAMP                      "point_clamp"
+#define SS_LINEAR_CLAMP                     "linear_clamp"
 
 #define VB_FS_QUAD                          "fs_quad.vb"
 #define IB_FS_QUAD                          "fs_quad.ib"
@@ -56,6 +68,22 @@ using namespace Microsoft::WRL;
 #define CB_PS_PHONG_ENTITY                  "phong.ps.EntityCBuf"
 #define CB_PS_GAMMA_CORRECTION_SYSTEM       "gamma_correction.ps.SystemCBuf"
 #define CB_VS_SKYBOX_SYSTEM                 "skybox.vs.SystemCBuf"
+#define CB_VS_BASIC_SYSTEM                  "basic.vs.SystemCBuf"
+#define CB_VS_BASIC_ENTITY                  "basic.vs.Entity"
+#define CB_VS_CUBE_SHADOW_MAP_ENTITY        "cube_shadow_map.vs.EntityCBuf"
+#define CB_GS_CUBE_SHADOW_MAP_SYSTEM        "cube_shadow_map.gs.SystemCBuf"
+
+
+#define DSV_DIRLIGHT_SHADOW_MAP(x)          "dirLight_shadow_map" + std::to_string((x))
+#define SRV_DIRLIGHT_SHADOW_MAP             "dirLight_shadow_map"
+
+#define DSV_POINTLIGHT_SHADOW_MAP(x)        "pointlight_shadow_map" + std::to_string((x))
+#define SRV_POINTLIGHT_SHADOW_MAP           "pointlight_shadow_map"
+
+#define DSV_SPOTLIGHT_SHADOW_MAP(x)        "spotlight_shadow_map" + std::to_string((x))
+#define SRV_SPOTLIGHT_SHADOW_MAP           "spotlight_shadow_map"
+
+#define SHADOWMAP_SIZE 2040
 
 namespace GA
 {
@@ -72,10 +100,13 @@ namespace GA
 		SetShaders();
 		SetStates();
 		SetBuffers();
+		SetLightDepthBuffers();
 	}
 
 	void LambertianRenderGraph::Execute(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/)
 	{
+		// set lights and shadow pass
+		SetLights();
 		SolidPhongPass(viewPos, viewProj);
 		SkyboxPass(viewProj);
 		TransparentPhongPass(viewPos, viewProj);
@@ -83,12 +114,26 @@ namespace GA
 		GammaCorrectionPass();
 	}
 
+	void LambertianRenderGraph::ShadowPass()
+	{
+
+	}
+
 	void LambertianRenderGraph::SolidPhongPass(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/)
 	{
+		D3D11_VIEWPORT vp = {};
+		vp.TopLeftX = 0.0f;
+		vp.TopLeftY = 0.0f;
+		vp.Width = (float)m_windowWidth;
+		vp.Height = (float)m_windowHeight;
+		vp.MinDepth = 0.0f;
+		vp.MaxDepth = 1.0f;
+		m_context->GetDeviceContext()->RSSetViewports(1, &vp);
+
 		auto rtv = m_resLib.Get<RenderTargetView>(RTV_SCENE);
 		auto dsv = m_resLib.Get<DepthStencilView>(DSV_SCENE);
 		rtv->Clear(0.0f, 0.0f, 0.0f, 0.0f);
-		dsv->Clear(D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0xff);
+		dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
 		if (m_renderable.empty()) return;
 
@@ -106,7 +151,6 @@ namespace GA
 
 		// system cbufs
 		{
-			SetLights();
 			m_resLib.Get<Buffer>(CB_PS_PHONG_SYSTEM)->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
 
 			GA::Utils::PhongVSSystemCBuf cbufData = {};
@@ -117,6 +161,13 @@ namespace GA
 			cbuf->SetData(&cbufData);
 			cbuf->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
 		}
+
+		m_resLib.Get<ShaderResourceView>(SRV_DIRLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("dirLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("dirLightShadowMapsSampler"));
+		m_resLib.Get<ShaderResourceView>(SRV_POINTLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("pointLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("pointLightShadowMapsSampler"));
+		m_resLib.Get<ShaderResourceView>(SRV_SPOTLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("spotLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("spotLightShadowMapsSampler"));
 
 		for (const auto& e : m_renderable)
 		{
@@ -163,6 +214,7 @@ namespace GA
 				cbufData.mat.enableNormalMapping = mat.normalMap ? TRUE : FALSE;
 				cbufData.mat.enableParallaxMapping = mat.normalMap && mat.depthMap ? TRUE : FALSE;
 				cbufData.mat.depthMapScale = mat.depthMapScale;
+				cbufData.receiveShadows = mesh.receiveShadows;
 
 				auto cbuf = m_resLib.Get<Buffer>(CB_PS_PHONG_ENTITY);
 				cbuf->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
@@ -225,7 +277,6 @@ namespace GA
 
 		// system cbufs
 		{
-			SetLights();
 			m_resLib.Get<Buffer>(CB_PS_PHONG_SYSTEM)->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
 
 			GA::Utils::PhongVSSystemCBuf cbufData = {};
@@ -236,6 +287,13 @@ namespace GA
 			cbuf->SetData(&cbufData);
 			cbuf->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
 		}
+
+		m_resLib.Get<ShaderResourceView>(SRV_DIRLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("dirLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("dirLightShadowMapsSampler"));
+		m_resLib.Get<ShaderResourceView>(SRV_POINTLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("pointLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("pointLightShadowMapsSampler"));
+		m_resLib.Get<ShaderResourceView>(SRV_SPOTLIGHT_SHADOW_MAP)->PSBind(ps->GetResBinding("spotLightShadowMaps"));
+		m_resLib.Get<SamplerState>(SS_LINEAR_CLAMP)->PSBind(ps->GetResBinding("spotLightShadowMapsSampler"));
 
 		for (const auto& e : m_renderable)
 		{
@@ -281,6 +339,7 @@ namespace GA
 				cbufData.mat.enableNormalMapping = mat.normalMap ? TRUE : FALSE;
 				cbufData.mat.enableParallaxMapping = mat.normalMap && mat.depthMap ? TRUE : FALSE;
 				cbufData.mat.depthMapScale = mat.depthMapScale;
+				cbufData.receiveShadows = mesh.receiveShadows;
 
 				auto cbuf = m_resLib.Get<Buffer>(CB_PS_PHONG_ENTITY);
 				cbuf->PSBindAsCBuf(ps->GetResBinding("EntityCBuf"));
@@ -330,7 +389,7 @@ namespace GA
 		m_resLib.Get<ShaderResourceView>(SRV_SCENE)->PSBind(ps->GetResBinding("tex"));
 		m_resLib.Get<SamplerState>(SS_POINT_CLAMP)->PSBind(ps->GetResBinding("samplerState"));
 
-		DirectX::XMFLOAT4 gamma = { 2.2f, 0.0f, 0.0f, 0.0f };
+		DirectX::XMFLOAT4 gamma = { GAMMA, 0.0f, 0.0f, 0.0f };
 		auto cbuf = m_resLib.Get<Buffer>(CB_PS_GAMMA_CORRECTION_SYSTEM);
 		cbuf->SetData(&gamma);
 		cbuf->PSBindAsCBuf(ps->GetResBinding("SystemCBuf"));
@@ -349,6 +408,19 @@ namespace GA
 		psSysCbuf.activePointLights = (uint32_t)m_pointLights.size();
 		psSysCbuf.activeSpotLights = (uint32_t)m_spotLights.size();
 
+		D3D11_VIEWPORT vp = {};
+		vp.TopLeftX = 0.0f;
+		vp.TopLeftY = 0.0f;
+		vp.Width = (float)SHADOWMAP_SIZE;
+		vp.Height = (float)SHADOWMAP_SIZE;
+		vp.MinDepth = 0.0f;
+		vp.MaxDepth = 1.0f;
+		m_context->GetDeviceContext()->RSSetViewports(1, &vp);
+
+		m_resLib.Get<RasterizerState>(RS_DEPTH_SLOPE_SCALED_BIAS)->Bind();
+		m_resLib.Get<BlendState>(S_DEFAULT)->Bind(nullptr, 0xff);
+		m_resLib.Get<DepthStencilState>(S_DEFAULT)->Bind(0xff);
+
 		uint32_t index = 0;
 		for (const auto& e : m_dirLights)
 		{
@@ -357,10 +429,59 @@ namespace GA
 			XMVECTOR xmDirection = transform.GetForward();
 			XMFLOAT3 direction;
 			XMStoreFloat3(&direction, xmDirection);
+			XMMATRIX xmLightSpace = XMMatrixInverse(nullptr, transform.GetTransform()) * XMMatrixOrthographicLH(20.0f, 20.0f, 0.1f, 500.0f);
+			XMFLOAT4X4 lightSpace;
+			XMStoreFloat4x4(&lightSpace, XMMatrixTranspose(xmLightSpace));
+
 			psSysCbuf.dirLights[index].direction = direction;
 			psSysCbuf.dirLights[index].color = dirLight.color;
 			psSysCbuf.dirLights[index].ambientIntensity = dirLight.ambientIntensity;
 			psSysCbuf.dirLights[index].intensity = dirLight.intensity;
+			psSysCbuf.dirLights[index].lightSpace = lightSpace;
+
+
+			// shadow map pass
+			auto dsv = m_resLib.Get<DepthStencilView>(DSV_DIRLIGHT_SHADOW_MAP(index));
+			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+
+			if (m_renderable.empty()) return;
+
+			dsv->Bind();
+			// todo: cant run this in graphics debug. Have to bind a rtv because of stupid warning
+			// m_resLib.Get<RenderTargetView>(RTV_MAIN)->Bind(dsv.get());
+
+			auto vs = m_resLib.Get<VertexShader>(VS_BASIC);
+			vs->Bind();
+			m_resLib.Get<PixelShader>(PS_NULLPTR)->Bind();
+			m_resLib.Get<InputLayout>(IL_BASIC)->Bind();
+
+			{
+				auto cbuf = m_resLib.Get<Buffer>(CB_VS_BASIC_SYSTEM);
+				cbuf->SetData(&lightSpace);
+				cbuf->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
+			}
+
+			// draw to depth map
+			for (const auto& e : m_renderable)
+			{
+				const auto& [transform, mesh] = GetRegistry().get<TransformComponent, MeshComponent>(e);
+
+				if (!mesh.castShadows) continue;
+
+				{
+					XMFLOAT4X4 fTransform; 
+					XMStoreFloat4x4(&fTransform, XMMatrixTranspose(transform.GetTransform()));
+					auto cbuf = m_resLib.Get<Buffer>(CB_VS_BASIC_ENTITY);
+					cbuf->SetData(&fTransform);
+					cbuf->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+				}
+
+				mesh.vb->BindAsVB();
+				mesh.ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+				m_context->GetDeviceContext()->IASetPrimitiveTopology(mesh.topology);
+
+				GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(mesh.ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+			}
 
 			++index;
 		}
@@ -370,22 +491,104 @@ namespace GA
 		{
 			const auto& [transform, pointLight] = GetRegistry().get<TransformComponent, PointLightComponent>(e);
 
+			XMFLOAT4X4 lightSpace;
+			XMStoreFloat4x4(&lightSpace, XMMatrixTranspose(XMMatrixTranslation(-transform.position.x, -transform.position.y, -transform.position.z)));
+
 			psSysCbuf.pointLights[index].position = transform.position;
 			psSysCbuf.pointLights[index].color = pointLight.color;
 			psSysCbuf.pointLights[index].ambientIntensity = pointLight.ambientIntensity;
 			psSysCbuf.pointLights[index].intensity = pointLight.intensity;
+			psSysCbuf.pointLights[index].nearZ = pointLight.shadowNearZ;
+			psSysCbuf.pointLights[index].farZ = pointLight.shadowFarZ;
+			psSysCbuf.pointLights[index].lightSpace = lightSpace;
 
+			// shadow map pass
+			auto dsv = m_resLib.Get<DepthStencilView>(DSV_POINTLIGHT_SHADOW_MAP(index));
+			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+
+			if (m_renderable.empty()) return;
+
+			dsv->Bind();
+
+			auto vs = m_resLib.Get<VertexShader>(VS_CUBE_SHADOW_MAP);
+			auto gs = m_resLib.Get<GeometryShader>(GS_CUBE_SHADOW_MAP);
+			vs->Bind();
+			gs->Bind();
+			m_resLib.Get<PixelShader>(PS_NULLPTR)->Bind();
+			m_resLib.Get<InputLayout>(VS_CUBE_SHADOW_MAP)->Bind();
+
+			XMMATRIX xmPointLightProjection = XMMatrixPerspectiveFovLH(XMConvertToRadians(90.0f), 1.0f, pointLight.shadowNearZ, pointLight.shadowFarZ);
+			XMMATRIX xmPointLightTranslation = XMMatrixTranslation(transform.position.x, transform.position.y, transform.position.z);
+			XMMATRIX xmPointLightSpace[6] =
+			{
+				// + x
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(0.0f, XMConvertToRadians(90.0f), 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+
+				// -x
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(0.0f, XMConvertToRadians(-90.0f), 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+
+				// +y
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(XMConvertToRadians(-90.0f), 0.0f, 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+
+				// -y
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(XMConvertToRadians(90.0f), 0.0f, 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+
+				// +z
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(0.0, 0.0f, 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+
+				// -z
+				XMMatrixInverse(nullptr, XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(0.0, XMConvertToRadians(180.0f), 0.0f)) * xmPointLightTranslation) * xmPointLightProjection,
+			};
+
+			XMFLOAT4X4 pointLightSpace[6];
+			for (int i = 0; i < 6; i++)
+				XMStoreFloat4x4(&pointLightSpace[i], XMMatrixTranspose(xmPointLightSpace[i]));
+
+			{
+				auto cbuf = m_resLib.Get<Buffer>(CB_GS_CUBE_SHADOW_MAP_SYSTEM);
+				cbuf->SetData(pointLightSpace);
+				cbuf->GSBindAsCBuf(gs->GetResBinding("SystemCBuf"));
+			}
+
+			// draw to depth map
+			for (const auto& e : m_renderable)
+			{
+				const auto& [transform, mesh] = GetRegistry().get<TransformComponent, MeshComponent>(e);
+
+				if (!mesh.castShadows) continue;
+
+				{
+					XMFLOAT4X4 fTransform;
+					XMStoreFloat4x4(&fTransform, XMMatrixTranspose(transform.GetTransform()));
+					auto cbuf = m_resLib.Get<Buffer>(CB_VS_CUBE_SHADOW_MAP_ENTITY);
+					cbuf->SetData(&fTransform);
+					cbuf->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+				}
+
+				mesh.vb->BindAsVB();
+				mesh.ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+				m_context->GetDeviceContext()->IASetPrimitiveTopology(mesh.topology);
+
+				GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(mesh.ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+			}
+
+			m_resLib.Get<GeometryShader>(GS_NULLPTR)->Bind();
+			
 			++index;
 		}
 
 		index = 0;
-		for (const auto& e : m_pointLights)
+		for (const auto& e : m_spotLights)
 		{
 			const auto& [transform, spotLight] = GetRegistry().get<TransformComponent, SpotLightComponent>(e);
 
 			XMVECTOR xmDirection = transform.GetForward();
 			XMFLOAT3 direction;
 			XMStoreFloat3(&direction, xmDirection);
+
+			XMMATRIX xmLightSpace = XMMatrixInverse(nullptr, transform.GetTransform()) * XMMatrixPerspectiveFovLH(XMConvertToRadians(90.0f), 1.0f, spotLight.shadowNearZ, spotLight.shadowFarZ);
+			XMFLOAT4X4 lightSpace;
+			XMStoreFloat4x4(&lightSpace, XMMatrixTranspose(xmLightSpace));
 
 			psSysCbuf.spotLights[index].direction = direction;
 			psSysCbuf.spotLights[index].position = transform.position;
@@ -394,6 +597,50 @@ namespace GA
 			psSysCbuf.spotLights[index].intensity = spotLight.intensity;
 			psSysCbuf.spotLights[index].innerCutOffCosAngle = cosf(XMConvertToRadians(spotLight.innerCutOffAngle));
 			psSysCbuf.spotLights[index].outerCutOffCosAngle = cosf(XMConvertToRadians(spotLight.outerCutOffAngle));
+			psSysCbuf.spotLights[index].lightSpace = lightSpace;
+
+			// shadow map pass
+			auto dsv = m_resLib.Get<DepthStencilView>(DSV_SPOTLIGHT_SHADOW_MAP(index));
+			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
+
+			if (m_renderable.empty()) return;
+
+			dsv->Bind();
+			// todo: cant run this in graphics debug. Have to bind a rtv because of stupid warning
+			// m_resLib.Get<RenderTargetView>(RTV_MAIN)->Bind(dsv.get());
+
+			auto vs = m_resLib.Get<VertexShader>(VS_BASIC);
+			vs->Bind();
+			m_resLib.Get<PixelShader>(PS_NULLPTR)->Bind();
+			m_resLib.Get<InputLayout>(IL_BASIC)->Bind();
+
+			{
+				auto cbuf = m_resLib.Get<Buffer>(CB_VS_BASIC_SYSTEM);
+				cbuf->SetData(&lightSpace);
+				cbuf->VSBindAsCBuf(vs->GetResBinding("SystemCBuf"));
+			}
+
+			// draw to depth map
+			for (const auto& e : m_renderable)
+			{
+				const auto& [transform, mesh] = GetRegistry().get<TransformComponent, MeshComponent>(e);
+
+				if (!mesh.castShadows) continue;
+
+				{
+					XMFLOAT4X4 fTransform;
+					XMStoreFloat4x4(&fTransform, XMMatrixTranspose(transform.GetTransform()));
+					auto cbuf = m_resLib.Get<Buffer>(CB_VS_BASIC_ENTITY);
+					cbuf->SetData(&fTransform);
+					cbuf->VSBindAsCBuf(vs->GetResBinding("EntityCBuf"));
+				}
+
+				mesh.vb->BindAsVB();
+				mesh.ib->BindAsIB(DXGI_FORMAT_R32_UINT);
+				m_context->GetDeviceContext()->IASetPrimitiveTopology(mesh.topology);
+
+				GDX11_CONTEXT_THROW_INFO_ONLY(m_context->GetDeviceContext()->DrawIndexed(mesh.ib->GetDesc().ByteWidth / sizeof(uint32_t), 0, 0));
+			}
 
 			++index;
 		}
@@ -407,8 +654,26 @@ namespace GA
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	void LambertianRenderGraph::ResizeViews(uint32_t width, uint32_t height)
 	{
+		m_windowWidth = width;
+		m_windowHeight = height;
+
 		// main rtv
 		{
 			if (m_resLib.Exist<RenderTargetView>(RTV_MAIN))
@@ -579,20 +844,30 @@ namespace GA
 		m_resLib.Add(VS_PHONG, VertexShader::Create(m_context, "res/cso/phong.vs.cso"));
 		m_resLib.Add(PS_PHONG, PixelShader::Create(m_context, "res/cso/phong.ps.cso"));
 		m_resLib.Add(PS_PHONG_OIT, PixelShader::Create(m_context, "res/cso/phong_oit.ps.cso"));
-		m_resLib.Add(IL_PHONG, InputLayout::Create(m_context, m_resLib.Get<VertexShader>("phong")));
+		m_resLib.Add(IL_PHONG, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_PHONG)));
 
 		m_resLib.Add(VS_FS_OUT_TC_POS, VertexShader::Create(m_context, "res/cso/fullscreen_out_tc_pos.vs.cso"));
-		m_resLib.Add(IL_FS_OUT_TC_POS, InputLayout::Create(m_context, m_resLib.Get<VertexShader>("fullscreen_out_tc_pos")));
+		m_resLib.Add(IL_FS_OUT_TC_POS, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_FS_OUT_TC_POS)));
 
 		m_resLib.Add(VS_FS_OUT_POS, VertexShader::Create(m_context, "res/cso/fullscreen_out_pos.vs.cso"));
-		m_resLib.Add(IL_FS_OUT_POS, InputLayout::Create(m_context, m_resLib.Get<VertexShader>("fullscreen_out_pos")));
+		m_resLib.Add(IL_FS_OUT_POS, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_FS_OUT_POS)));
 
 		m_resLib.Add(PS_PHONG_OIT_COMPOSITE, PixelShader::Create(m_context, "res/cso/phong_oit_composite.ps.cso"));
 		m_resLib.Add(PS_GAMMA_CORRECTION, PixelShader::Create(m_context, "res/cso/gamma_correction.ps.cso"));
 
 		m_resLib.Add(VS_SKYBOX, VertexShader::Create(m_context, "res/cso/skybox.vs.cso"));
 		m_resLib.Add(PS_SKYBOX, PixelShader::Create(m_context, "res/cso/skybox.ps.cso"));
-		m_resLib.Add(IL_SKYBOX, InputLayout::Create(m_context, m_resLib.Get<VertexShader>("skybox")));
+		m_resLib.Add(IL_SKYBOX, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_SKYBOX)));
+
+		m_resLib.Add(VS_BASIC, VertexShader::Create(m_context, "res/cso/basic.vs.cso"));
+		m_resLib.Add(PS_NULLPTR, PixelShader::Create(m_context));
+		m_resLib.Add(IL_BASIC, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_BASIC)));
+
+		m_resLib.Add(VS_CUBE_SHADOW_MAP, VertexShader::Create(m_context, "res/cso/cube_shadow_map.vs.cso"));
+		m_resLib.Add(GS_CUBE_SHADOW_MAP, GeometryShader::Create(m_context, "res/cso/cube_shadow_map.gs.cso"));
+		m_resLib.Add(IL_CUBE_SHADOW_MAP, InputLayout::Create(m_context, m_resLib.Get<VertexShader>(VS_CUBE_SHADOW_MAP)));
+
+		m_resLib.Add(GS_NULLPTR, GeometryShader::Create(m_context));
 	}
 
 	void LambertianRenderGraph::SetStates()
@@ -604,6 +879,12 @@ namespace GA
 			D3D11_RASTERIZER_DESC desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
 			desc.CullMode = D3D11_CULL_NONE;
 			m_resLib.Add(RS_CULL_NONE, RasterizerState::Create(m_context, desc));
+
+			desc = CD3D11_RASTERIZER_DESC(CD3D11_DEFAULT());
+			desc.DepthBias = 40;
+			desc.SlopeScaledDepthBias = 6.0f;
+			desc.DepthBiasClamp = 1.0f;
+			m_resLib.Add(RS_DEPTH_SLOPE_SCALED_BIAS, RasterizerState::Create(m_context, desc));
 		}
 
 		// bs
@@ -680,6 +961,17 @@ namespace GA
 			desc.MinLOD = 0.0f;
 			desc.MaxLOD = D3D11_FLOAT32_MAX;
 			m_resLib.Add(SS_POINT_CLAMP, SamplerState::Create(m_context, desc));
+
+			desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+			desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+			desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+			desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+			for (int i = 0; i < 4; i++)
+				desc.BorderColor[i] = 0.0f;
+			desc.MinLOD = 0.0f;
+			desc.MaxLOD = D3D11_FLOAT32_MAX;
+			m_resLib.Add(SS_LINEAR_CLAMP, SamplerState::Create(m_context, desc));
 		}
 	}
 
@@ -803,6 +1095,165 @@ namespace GA
 			desc.MiscFlags = 0;
 			desc.StructureByteStride = 0;
 			m_resLib.Add(CB_VS_SKYBOX_SYSTEM, Buffer::Create(m_context, desc, nullptr));
+		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add(CB_VS_BASIC_SYSTEM, Buffer::Create(m_context, desc, nullptr));
+		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add(CB_VS_BASIC_ENTITY, Buffer::Create(m_context, desc, nullptr));
+		}
+
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4X4);
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add(CB_VS_CUBE_SHADOW_MAP_ENTITY, Buffer::Create(m_context, desc, nullptr));
+		}
+
+		{
+			D3D11_BUFFER_DESC desc = {};
+			desc.ByteWidth = sizeof(XMFLOAT4X4) * 6;
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			desc.MiscFlags = 0;
+			desc.StructureByteStride = 0;
+			m_resLib.Add(CB_GS_CUBE_SHADOW_MAP_SYSTEM, Buffer::Create(m_context, desc, nullptr));
+		}
+	}
+
+	void LambertianRenderGraph::SetLightDepthBuffers()
+	{
+		// dir light depth buffers
+		{
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = SHADOWMAP_SIZE;
+			texDesc.Height = SHADOWMAP_SIZE;
+			texDesc.ArraySize = GA::Utils::s_maxLights;
+			texDesc.MipLevels = 1;
+			texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = 0;
+			auto tex = Texture2D::Create(m_context, texDesc, (void*)nullptr);
+
+			for (int i = 0; i < GA::Utils::s_maxLights; i++)
+			{
+				D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+				dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+				dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				dsvDesc.Texture2DArray.FirstArraySlice = i;
+				dsvDesc.Texture2DArray.ArraySize = 1;
+				dsvDesc.Texture2DArray.MipSlice = 0;
+				m_resLib.Add(DSV_DIRLIGHT_SHADOW_MAP(i), DepthStencilView::Create(m_context, dsvDesc, tex));
+			}
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+			srvDesc.Texture2DArray.ArraySize = GA::Utils::s_maxLights;
+			srvDesc.Texture2DArray.FirstArraySlice = 0;
+			srvDesc.Texture2DArray.MipLevels = 1;
+			srvDesc.Texture2DArray.MostDetailedMip = 0;
+			m_resLib.Add(SRV_DIRLIGHT_SHADOW_MAP, ShaderResourceView::Create(m_context, srvDesc, tex));
+		}
+
+		// point light depth buffers
+		{
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = SHADOWMAP_SIZE;
+			texDesc.Height = SHADOWMAP_SIZE;
+			texDesc.ArraySize = GA::Utils::s_maxLights * 6;
+			texDesc.MipLevels = 1;
+			texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+			auto tex = Texture2D::Create(m_context, texDesc, (void*)nullptr);
+
+			for (int i = 0; i < GA::Utils::s_maxLights; i++)
+			{
+				D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+				dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+				dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				dsvDesc.Texture2DArray.FirstArraySlice = i * 6;
+				dsvDesc.Texture2DArray.ArraySize = 6;
+				dsvDesc.Texture2DArray.MipSlice = 0;
+				m_resLib.Add(DSV_POINTLIGHT_SHADOW_MAP(i), DepthStencilView::Create(m_context, dsvDesc, tex));
+			}
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
+			srvDesc.Texture2DArray.ArraySize = GA::Utils::s_maxLights;
+			srvDesc.Texture2DArray.FirstArraySlice = 0;
+			srvDesc.Texture2DArray.MipLevels = 1;
+			srvDesc.Texture2DArray.MostDetailedMip = 0;
+			m_resLib.Add(SRV_POINTLIGHT_SHADOW_MAP, ShaderResourceView::Create(m_context, srvDesc, tex));
+		}
+
+		// wpot light depth buffers
+		{
+			D3D11_TEXTURE2D_DESC texDesc = {};
+			texDesc.Width = SHADOWMAP_SIZE;
+			texDesc.Height = SHADOWMAP_SIZE;
+			texDesc.ArraySize = GA::Utils::s_maxLights;
+			texDesc.MipLevels = 1;
+			texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+			texDesc.SampleDesc.Count = 1;
+			texDesc.SampleDesc.Quality = 0;
+			texDesc.Usage = D3D11_USAGE_DEFAULT;
+			texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+			texDesc.CPUAccessFlags = 0;
+			texDesc.MiscFlags = 0;
+			auto tex = Texture2D::Create(m_context, texDesc, (void*)nullptr);
+
+			for (int i = 0; i < GA::Utils::s_maxLights; i++)
+			{
+				D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+				dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+				dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				dsvDesc.Texture2DArray.FirstArraySlice = i;
+				dsvDesc.Texture2DArray.ArraySize = 1;
+				dsvDesc.Texture2DArray.MipSlice = 0;
+				m_resLib.Add(DSV_SPOTLIGHT_SHADOW_MAP(i), DepthStencilView::Create(m_context, dsvDesc, tex));
+			}
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+			srvDesc.Texture2DArray.ArraySize = GA::Utils::s_maxLights;
+			srvDesc.Texture2DArray.FirstArraySlice = 0;
+			srvDesc.Texture2DArray.MipLevels = 1;
+			srvDesc.Texture2DArray.MostDetailedMip = 0;
+			m_resLib.Add(SRV_SPOTLIGHT_SHADOW_MAP, ShaderResourceView::Create(m_context, srvDesc, tex));
 		}
 	}
 }

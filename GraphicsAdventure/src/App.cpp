@@ -58,24 +58,47 @@ namespace GA
 		m_lambertianRenderGraph = std::make_unique<LambertianRenderGraph>(m_scene.get(), m_context.get(), m_window->GetDesc().width, m_window->GetDesc().height);
 
 
+		for (int z = -1; z <= 1; z++)
 		{
-			auto e = m_scene->CreateEntity();
-			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 2.5f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(5.0f, 5.0f, 5.0f));
+			for (int y = -1; y <= 1; y++)
+			{
+				for (int x = -1; x <= 1; x++)
+				{
+					XMFLOAT4 color;
+					switch (z)
+					{
+					case -1:
+						color = { 1.0f, 1.0f, 0.0f, 1.0f };
+						break;
+					case 0:
+						color = { 0.0f, 1.0f, 1.0f, 1.0f };
+						break;
+					case 1:
+						color = { 1.0f, 0.0f, 1.0f, 1.0f };
+						break;
+					}
 
-			auto& mesh = e.AddComponent<MeshComponent>();
-			mesh.vb = m_resLib.Get<Buffer>("cube.vb");
-			mesh.ib = m_resLib.Get<Buffer>("cube.ib");
-			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+					auto e = m_scene->CreateEntity();
+					e.AddComponent<TransformComponent>(XMFLOAT3(x * 1.5f, y * 1.5f, z * 1.5f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f));
 
-			auto& mat = e.AddComponent<MaterialComponent>();
-			mat.color = { 1.0f, 1.0f, 1.0f, 0.5f };
-			mat.tiling = { 1.0f, 1.0f };
-			mat.shininess = 150.0f;
-			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("wood");
-			mat.normalMap = m_resLib.Get<ShaderResourceView>("bump_normal");
-			mat.depthMap = m_resLib.Get<ShaderResourceView>("bump_depth");
-			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
-			mat.depthMapScale = 0.1f;
+					auto& mesh = e.AddComponent<MeshComponent>();
+					mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+					mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+					mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+					mesh.receiveShadows = true;
+					mesh.castShadows = true;
+
+					auto& mat = e.AddComponent<MaterialComponent>();
+					mat.color = color;
+					mat.tiling = { 1.0f, 1.0f };
+					mat.shininess = 150.0f;
+					mat.diffuseMap = m_resLib.Get<ShaderResourceView>("wood");
+					mat.normalMap = nullptr;
+					mat.depthMap = nullptr;
+					mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+					mat.depthMapScale = 0.1f;
+				}
+			}
 		}
 
 		{
@@ -86,27 +109,116 @@ namespace GA
 			mesh.vb = m_resLib.Get<Buffer>("plane.vb");
 			mesh.ib = m_resLib.Get<Buffer>("plane.ib");
 			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-			
+			mesh.receiveShadows = true;
+			mesh.castShadows = true;
+
 			auto& mat = e.AddComponent<MaterialComponent>();
-			mat.color = { 1.0f, 1.0f, 1.0f, 0.3f };
+			mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
 			mat.tiling = { 10.0f, 10.0f };
 			mat.shininess = 150.0f;
 			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("wood");
-			mat.normalMap = m_resLib.Get<ShaderResourceView>("bump_normal");
-			mat.depthMap = m_resLib.Get<ShaderResourceView>("bump_depth");
+			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+			mat.depthMapScale = 0.1f;
+		}
+
+		//{
+		//	auto e = m_scene->CreateEntity();
+		//	e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 10.0f, -10.0f), XMFLOAT3(50.0f, -30.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f));
+		//	auto& dirLight = e.AddComponent<DirectionalLightComponent>();
+		//	dirLight.color = { 1.0f, 1.0f, 1.0f };
+		//	dirLight.ambientIntensity = 0.2f;
+		//	dirLight.intensity = 1.0f;
+		//	e.AddComponent<SkyboxComponent>().skybox = m_resLib.Get<ShaderResourceView>("skybox");
+		//}
+
+		{
+			auto e = m_scene->CreateEntity();
+			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
+			pointLightPos = &e.GetComponent<TransformComponent>().position;
+			auto& pointLight = e.AddComponent<PointLightComponent>();
+			pointLight.color = { 1.0f, 1.0f, 1.0f };
+			pointLight.ambientIntensity = 0.2f;
+			pointLight.intensity = 10.0f;
+			pointLight.shadowNearZ = 0.1f;
+			pointLight.shadowFarZ = 50.0f;
+
+			auto& mesh = e.AddComponent<MeshComponent>();
+			mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+			mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			mesh.receiveShadows = false;
+			mesh.castShadows = false;
+
+			auto& mat = e.AddComponent<MaterialComponent>();
+			mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			mat.tiling = { 1.0f, 1.0f };
+			mat.shininess = 150.0f;
+			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
+			mat.normalMap = nullptr;
+			mat.depthMap = nullptr;
 			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
 			mat.depthMapScale = 0.1f;
 		}
 
 		{
 			auto e = m_scene->CreateEntity();
-			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(50.0f, -30.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 00.0f));
-			auto& dirLight = e.AddComponent<DirectionalLightComponent>();
-			dirLight.color = { 1.0f, 1.0f, 1.0f };
-			dirLight.ambientIntensity = 0.2f;
-			dirLight.intensity = 1.0f;
-			e.AddComponent<SkyboxComponent>().skybox = m_resLib.Get<ShaderResourceView>("skybox");
+			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
+			auto& pointLight = e.AddComponent<PointLightComponent>();
+			pointLight.color = { 1.0f, 1.0f, 1.0f };
+			pointLight.ambientIntensity = 0.2f;
+			pointLight.intensity = 10.0f;
+			pointLight.shadowNearZ = 0.1f;
+			pointLight.shadowFarZ = 50.0f;
+
+			auto& mesh = e.AddComponent<MeshComponent>();
+			mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+			mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			mesh.receiveShadows = false;
+			mesh.castShadows = false;
+
+			auto& mat = e.AddComponent<MaterialComponent>();
+			mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			mat.tiling = { 1.0f, 1.0f };
+			mat.shininess = 150.0f;
+			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
+			mat.normalMap = nullptr;
+			mat.depthMap = nullptr;
+			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+			mat.depthMapScale = 0.1f;
 		}
+
+		//{
+		//	auto e = m_scene->CreateEntity();
+		//	e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, .0f), XMFLOAT3(90.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
+		//	spotLightPos = &e.GetComponent<TransformComponent>().position;
+		//	spotLightRot = &e.GetComponent<TransformComponent>().rotation;
+		//	auto& spotLight = e.AddComponent<SpotLightComponent>();
+		//	spotLight.color = { 1.0f, 1.0f, 1.0f };
+		//	spotLight.ambientIntensity = 0.2f;
+		//	spotLight.intensity = 10.0f;
+		//	spotLight.innerCutOffAngle = 45.0f;
+		//	spotLight.outerCutOffAngle = 50.0f;
+		//	spotLightInnerAngle = &e.GetComponent<SpotLightComponent>().innerCutOffAngle;
+		//	spotLightOuterAngle = &e.GetComponent<SpotLightComponent>().outerCutOffAngle;
+		// 	spotLight.shadowNearZ = 0.1f;
+		//	spotLight.shadowFarZ = 50.0f;
+		//
+		//	auto& mesh = e.AddComponent<MeshComponent>();
+		//	mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+		//	mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+		//	mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		//
+		//	auto& mat = e.AddComponent<MaterialComponent>();
+		//	mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		//	mat.tiling = { 1.0f, 1.0f };
+		//	mat.shininess = 150.0f;
+		//	mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
+		//	mat.normalMap = nullptr;
+		//	mat.depthMap = nullptr;
+		//	mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+		//	mat.depthMapScale = 0.1f;
+		//}
 	}
 
 	void App::Run()
@@ -155,7 +267,7 @@ namespace GA
 	void App::OnImGuiRender()
 	{
 		m_imguiManager.Begin();
-
+		ImGui::DragFloat3("Light position", &pointLightPos->x, 0.1f);
 		m_imguiManager.End();
 	}
 
@@ -412,15 +524,6 @@ namespace GA
 		if (event.GetWidth() == 0 || event.GetHeight() == 0) return false;
 
 		m_camera.SetAspect((float)m_window->GetDesc().width / m_window->GetDesc().height);
-
-		D3D11_VIEWPORT vp = {};
-		vp.TopLeftX = 0.0f;
-		vp.TopLeftY = 0.0f;
-		vp.Width = (float)event.GetWidth();
-		vp.Height = (float)event.GetHeight();
-		vp.MinDepth = 0.0f;
-		vp.MaxDepth = 1.0f;
-		m_context->GetDeviceContext()->RSSetViewports(1, &vp);
 
 		m_lambertianRenderGraph->ResizeViews(event.GetWidth(), event.GetHeight());
 		return false;

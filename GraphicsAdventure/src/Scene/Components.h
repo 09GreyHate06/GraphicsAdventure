@@ -54,6 +54,9 @@ namespace GA
 		std::shared_ptr<GDX11::Buffer> vb;
 		std::shared_ptr<GDX11::Buffer> ib;
 		D3D11_PRIMITIVE_TOPOLOGY topology;
+
+		bool castShadows;
+		bool receiveShadows;
 	};
 
 	struct MaterialComponent
@@ -81,6 +84,8 @@ namespace GA
 		DirectX::XMFLOAT3 color;
 		float ambientIntensity;
 		float intensity;
+		float shadowNearZ;
+		float shadowFarZ;
 	};
 
 	struct SpotLightComponent
@@ -90,6 +95,8 @@ namespace GA
 		float ambientIntensity;
 		float innerCutOffAngle;
 		float outerCutOffAngle;
+		float shadowNearZ;
+		float shadowFarZ;
 	};
 
 	struct SkyboxComponent
