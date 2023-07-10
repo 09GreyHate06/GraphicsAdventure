@@ -87,8 +87,8 @@ using namespace Microsoft::WRL;
 
 namespace GA
 {
-	LambertianRenderGraph::LambertianRenderGraph(Scene* scene, GDX11::GDX11Context* context, uint32_t windowWidth, uint32_t windowHeight)
-		: System(scene), m_context(context)
+	LambertianRenderGraph::LambertianRenderGraph(Scene* scene, GDX11::GDX11Context* context, const Camera* camera, uint32_t windowWidth, uint32_t windowHeight)
+		: System(scene), m_context(context), m_camera(camera)
 	{
 		m_dirLights.connect(GetRegistry(), entt::collector.group<TransformComponent, DirectionalLightComponent>(entt::exclude<>));
 		m_pointLights.connect(GetRegistry(), entt::collector.group<TransformComponent, PointLightComponent>(entt::exclude<>));
@@ -103,8 +103,12 @@ namespace GA
 		SetLightDepthBuffers();
 	}
 
-	void LambertianRenderGraph::Execute(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/)
+	void LambertianRenderGraph::Execute()
 	{
+		XMFLOAT3 viewPos = m_camera->GetDesc().position;
+		XMFLOAT4X4 viewProj;
+		XMStoreFloat4x4(&viewProj, XMMatrixTranspose(m_camera->GetViewMatrix() * m_camera->GetProjectionMatrix()));
+
 		// set lights and shadow pass
 		SetLights();
 		SolidPhongPass(viewPos, viewProj);
@@ -444,7 +448,7 @@ namespace GA
 			auto dsv = m_resLib.Get<DepthStencilView>(DSV_DIRLIGHT_SHADOW_MAP(index));
 			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
-			if (m_renderable.empty()) return;
+			if (m_renderable.empty()) continue;
 
 			dsv->Bind();
 			// todo: cant run this in graphics debug. Have to bind a rtv because of stupid warning
@@ -506,7 +510,7 @@ namespace GA
 			auto dsv = m_resLib.Get<DepthStencilView>(DSV_POINTLIGHT_SHADOW_MAP(index));
 			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
-			if (m_renderable.empty()) return;
+			if (m_renderable.empty()) continue;
 
 			dsv->Bind();
 
@@ -603,7 +607,7 @@ namespace GA
 			auto dsv = m_resLib.Get<DepthStencilView>(DSV_SPOTLIGHT_SHADOW_MAP(index));
 			dsv->Clear(D3D11_CLEAR_DEPTH, 1.0f, 0xff);
 
-			if (m_renderable.empty()) return;
+			if (m_renderable.empty()) continue;
 
 			dsv->Bind();
 			// todo: cant run this in graphics debug. Have to bind a rtv because of stupid warning

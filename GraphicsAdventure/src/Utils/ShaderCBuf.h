@@ -6,6 +6,9 @@ namespace GA::Utils
 	// phong.ps.hlsl max lights
 	static constexpr uint32_t s_maxLights = 5;
 
+	// csm_test.ps.hlsl num cascades
+	static constexpr uint32_t s_numCascades = 5;
+
 	struct PhongVSSystemCBuf
 	{
 		DirectX::XMFLOAT4X4 viewProjection;
@@ -74,6 +77,55 @@ namespace GA::Utils
 	struct PhongPSEntityCBuf
 	{
 		struct Material
+		{
+			DirectX::XMFLOAT4 color;
+			DirectX::XMFLOAT2 tiling;
+			float shininess;
+			BOOL enableNormalMapping;
+			BOOL enableParallaxMapping;
+			float depthMapScale;
+			int p0;
+			int p1;
+		} mat;
+
+		BOOL receiveShadows;
+		float p2;
+		float p3;
+		float p4;
+	};
+
+
+	struct CSMTestVSSystemCBuf
+	{
+		DirectX::XMFLOAT4X4 viewProjection;
+		DirectX::XMFLOAT4X4 view;
+		DirectX::XMFLOAT3 viewPos; // camera pos
+		float p0;
+	};
+
+	struct CSMTestVSEntityCBuf
+	{
+		DirectX::XMFLOAT4X4 transform;
+		DirectX::XMFLOAT4X4 normalMatrix;
+	};
+
+	struct CSMTestPSSystemCBuf
+	{
+		struct DirectionalLight
+		{
+			DirectX::XMFLOAT3 color;
+			float ambientIntensity;
+			DirectX::XMFLOAT3 direction;
+			float intensity;
+
+			DirectX::XMFLOAT4X4 lightSpaces[s_numCascades];
+			DirectX::XMFLOAT4 cascadeFarZDist[s_numCascades]; // arranged from lowest to highest
+		} dirLight;
+	};
+
+	struct CSMTestPSEntityCBuf
+	{
+		struct
 		{
 			DirectX::XMFLOAT4 color;
 			DirectX::XMFLOAT2 tiling;

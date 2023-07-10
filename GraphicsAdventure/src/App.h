@@ -9,6 +9,7 @@
 #include "Core/Time.h"
 #include "Scene/Scene.h"
 #include "RenderGraph/LambertianRenderGraph.h"
+#include "RenderGraph/CSMTestRenderGraph.h"
 
 namespace GA
 {
@@ -43,7 +44,8 @@ namespace GA
 		GA::Utils::EditorCameraController m_camController;
 
 		std::unique_ptr<Scene> m_scene;
-		std::unique_ptr<LambertianRenderGraph> m_lambertianRenderGraph;
+		//std::unique_ptr<LambertianRenderGraph> m_lambertianRenderGraph;
+		std::unique_ptr<CSMTestRenderGraph> m_csmTestRenderGraph;
 
 		// temp
 		DirectX::XMFLOAT3* pointLightPos;

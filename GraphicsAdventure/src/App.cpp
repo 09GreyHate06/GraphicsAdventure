@@ -48,15 +48,15 @@ namespace GA
 		camDesc.fov = 60.0f;
 		camDesc.aspect = (float)m_window->GetDesc().width / m_window->GetDesc().height;
 		camDesc.nearZ = 0.1f;
-		camDesc.farZ = 1000.0f;
+		camDesc.farZ = 500.0f;
 		camDesc.position = { 0.0f, 0.0f, 0.0f };
 		camDesc.rotation = { 0.0f, 0.0f, 0.0f };
 		m_camera.Set(camDesc);
 		m_camController.Set(&m_camera, XMFLOAT3(0.0f, 0.0f, 0.0f), 8.0f, 0.8f, 5.0f, 15.0f);
 
 		m_scene = std::make_unique<Scene>();
-		m_lambertianRenderGraph = std::make_unique<LambertianRenderGraph>(m_scene.get(), m_context.get(), m_window->GetDesc().width, m_window->GetDesc().height);
-
+		//m_lambertianRenderGraph = std::make_unique<LambertianRenderGraph>(m_scene.get(), m_context.get(), &m_camera, m_window->GetDesc().width, m_window->GetDesc().height);
+		m_csmTestRenderGraph = std::make_unique<CSMTestRenderGraph>(m_scene.get(), m_context.get(), &m_camera, m_window->GetDesc().width, m_window->GetDesc().height);
 
 		for (int z = -1; z <= 1; z++)
 		{
@@ -68,13 +68,13 @@ namespace GA
 					switch (z)
 					{
 					case -1:
-						color = { 1.0f, 1.0f, 0.0f, 1.0f };
+						color = { 1.0f, 1.0f, 1.0f, 1.0f };
 						break;
 					case 0:
-						color = { 0.0f, 1.0f, 1.0f, 1.0f };
+						color = { 1.0f, 1.0f, 1.0f, 1.0f };
 						break;
 					case 1:
-						color = { 1.0f, 0.0f, 1.0f, 1.0f };
+						color = { 1.0f, 1.0f, 1.0f, 1.0f };
 						break;
 					}
 
@@ -117,76 +117,79 @@ namespace GA
 			mat.tiling = { 10.0f, 10.0f };
 			mat.shininess = 150.0f;
 			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("wood");
+			mat.normalMap = nullptr;
+			mat.depthMap = nullptr;
 			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
 			mat.depthMapScale = 0.1f;
+		}
+
+		{
+			auto e = m_scene->CreateEntity();
+			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 10.0f, -10.0f), XMFLOAT3(50.0f, -30.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f));
+			pointLightPos = &e.GetComponent<TransformComponent>().rotation;
+			auto& dirLight = e.AddComponent<DirectionalLightComponent>();
+			dirLight.color = { 1.0f, 1.0f, 1.0f };
+			dirLight.ambientIntensity = 0.2f;
+			dirLight.intensity = 1.0f;
+			e.AddComponent<SkyboxComponent>().skybox = m_resLib.Get<ShaderResourceView>("skybox");
 		}
 
 		//{
 		//	auto e = m_scene->CreateEntity();
-		//	e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 10.0f, -10.0f), XMFLOAT3(50.0f, -30.0f, 0.0f), XMFLOAT3(1.0f, 1.0f, 1.0f));
-		//	auto& dirLight = e.AddComponent<DirectionalLightComponent>();
-		//	dirLight.color = { 1.0f, 1.0f, 1.0f };
-		//	dirLight.ambientIntensity = 0.2f;
-		//	dirLight.intensity = 1.0f;
-		//	e.AddComponent<SkyboxComponent>().skybox = m_resLib.Get<ShaderResourceView>("skybox");
+		//	e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
+		//	pointLightPos = &e.GetComponent<TransformComponent>().position;
+		//	auto& pointLight = e.AddComponent<PointLightComponent>();
+		//	pointLight.color = { 1.0f, 1.0f, 1.0f };
+		//	pointLight.ambientIntensity = 0.2f;
+		//	pointLight.intensity = 1.0f;
+		//	pointLight.shadowNearZ = 0.1f;
+		//	pointLight.shadowFarZ = 50.0f;
+		//
+		//	auto& mesh = e.AddComponent<MeshComponent>();
+		//	mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+		//	mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+		//	mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		//	mesh.receiveShadows = false;
+		//	mesh.castShadows = false;
+		//
+		//	auto& mat = e.AddComponent<MaterialComponent>();
+		//	mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		//	mat.tiling = { 1.0f, 1.0f };
+		//	mat.shininess = 150.0f;
+		//	mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
+		//	mat.normalMap = nullptr;
+		//	mat.depthMap = nullptr;
+		//	mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+		//	mat.depthMapScale = 0.1f;
 		//}
 
-		{
-			auto e = m_scene->CreateEntity();
-			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
-			pointLightPos = &e.GetComponent<TransformComponent>().position;
-			auto& pointLight = e.AddComponent<PointLightComponent>();
-			pointLight.color = { 1.0f, 1.0f, 1.0f };
-			pointLight.ambientIntensity = 0.2f;
-			pointLight.intensity = 10.0f;
-			pointLight.shadowNearZ = 0.1f;
-			pointLight.shadowFarZ = 50.0f;
+		//{
+		//	auto e = m_scene->CreateEntity();
+		//	e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
+		//	auto& pointLight = e.AddComponent<PointLightComponent>();
+		//	pointLight.color = { 1.0f, 1.0f, 1.0f };
+		//	pointLight.ambientIntensity = 0.2f;
+		//	pointLight.intensity = 1.0f;
+		//	pointLight.shadowNearZ = 0.1f;
+		//	pointLight.shadowFarZ = 50.0f;
 
-			auto& mesh = e.AddComponent<MeshComponent>();
-			mesh.vb = m_resLib.Get<Buffer>("cube.vb");
-			mesh.ib = m_resLib.Get<Buffer>("cube.ib");
-			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-			mesh.receiveShadows = false;
-			mesh.castShadows = false;
+		//	auto& mesh = e.AddComponent<MeshComponent>();
+		//	mesh.vb = m_resLib.Get<Buffer>("cube.vb");
+		//	mesh.ib = m_resLib.Get<Buffer>("cube.ib");
+		//	mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		//	mesh.receiveShadows = false;
+		//	mesh.castShadows = false;
 
-			auto& mat = e.AddComponent<MaterialComponent>();
-			mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			mat.tiling = { 1.0f, 1.0f };
-			mat.shininess = 150.0f;
-			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
-			mat.normalMap = nullptr;
-			mat.depthMap = nullptr;
-			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
-			mat.depthMapScale = 0.1f;
-		}
-
-		{
-			auto e = m_scene->CreateEntity();
-			e.AddComponent<TransformComponent>(XMFLOAT3(0.0f, 5.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.2f, 0.2f, 0.2f));
-			auto& pointLight = e.AddComponent<PointLightComponent>();
-			pointLight.color = { 1.0f, 1.0f, 1.0f };
-			pointLight.ambientIntensity = 0.2f;
-			pointLight.intensity = 10.0f;
-			pointLight.shadowNearZ = 0.1f;
-			pointLight.shadowFarZ = 50.0f;
-
-			auto& mesh = e.AddComponent<MeshComponent>();
-			mesh.vb = m_resLib.Get<Buffer>("cube.vb");
-			mesh.ib = m_resLib.Get<Buffer>("cube.ib");
-			mesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-			mesh.receiveShadows = false;
-			mesh.castShadows = false;
-
-			auto& mat = e.AddComponent<MaterialComponent>();
-			mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			mat.tiling = { 1.0f, 1.0f };
-			mat.shininess = 150.0f;
-			mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
-			mat.normalMap = nullptr;
-			mat.depthMap = nullptr;
-			mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
-			mat.depthMapScale = 0.1f;
-		}
+		//	auto& mat = e.AddComponent<MaterialComponent>();
+		//	mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		//	mat.tiling = { 1.0f, 1.0f };
+		//	mat.shininess = 150.0f;
+		//	mat.diffuseMap = m_resLib.Get<ShaderResourceView>("white");
+		//	mat.normalMap = nullptr;
+		//	mat.depthMap = nullptr;
+		//	mat.samplerState = m_resLib.Get<SamplerState>("anisotropic_wrap");
+		//	mat.depthMapScale = 0.1f;
+		//}
 
 		//{
 		//	auto e = m_scene->CreateEntity();
@@ -259,9 +262,8 @@ namespace GA
 
 	void App::OnRender()
 	{
-		XMFLOAT4X4 viewProj;
-		XMStoreFloat4x4(&viewProj, XMMatrixTranspose(m_camera.GetViewMatrix() * m_camera.GetProjectionMatrix()));
-		m_lambertianRenderGraph->Execute(m_camera.GetDesc().position, viewProj);
+		//m_lambertianRenderGraph->Execute();
+		m_csmTestRenderGraph->Execute();
 	}
 
 	void App::OnImGuiRender()
@@ -525,7 +527,8 @@ namespace GA
 
 		m_camera.SetAspect((float)m_window->GetDesc().width / m_window->GetDesc().height);
 
-		m_lambertianRenderGraph->ResizeViews(event.GetWidth(), event.GetHeight());
+		//m_lambertianRenderGraph->ResizeViews(event.GetWidth(), event.GetHeight());
+		m_csmTestRenderGraph->ResizeViews(event.GetWidth(), event.GetHeight());
 		return false;
 	}
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Scene/System.h"
+#include "Scene/Camera.h"
 #include "Utils/ResourceLibrary.h"
 
 namespace GA
@@ -7,9 +8,9 @@ namespace GA
 	class LambertianRenderGraph : public System
 	{
 	public:
-		LambertianRenderGraph(Scene* scene, GDX11::GDX11Context* context, uint32_t windowWidth, uint32_t windowHeight);
+		LambertianRenderGraph(Scene* scene, GDX11::GDX11Context* context, const Camera* camera, uint32_t windowWidth, uint32_t windowHeight);
 
-		void Execute(const DirectX::XMFLOAT3& viewPos, const DirectX::XMFLOAT4X4& viewProj /*column major*/);
+		void Execute();
 
 		void ResizeViews(uint32_t width, uint32_t height);
 
@@ -29,6 +30,7 @@ namespace GA
 		void SetLightDepthBuffers();
 
 		GDX11::GDX11Context* m_context;
+		const Camera* m_camera;
 		GA::Utils::ResourceLibrary m_resLib;
 
 		entt::observer m_renderable;
